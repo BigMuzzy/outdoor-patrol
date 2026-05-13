@@ -1,0 +1,129 @@
+# Dev Containers
+
+This folder holds the VS Code Dev Container definitions for working on the
+`outdoor-patrol` workspace. There are two variants:
+
+| Folder | Target host | GUI | Hardware passthrough | When to use |
+|---|---|---|---|---|
+| `./` (this folder) | Workstation (x86_64 / WSL2 / arm64 Mac) | X11 / Wayland / WSLg | none | Day-to-day development, simulation, RViz |
+| [`orangepi/`](orangepi/devcontainer.json) | Orange Pi 5 (RK3588, arm64) | headless | sensors via `--device` | On-device development & debugging on the robot |
+
+Both reuse the same [`Dockerfile`](Dockerfile) (based on `althack/ros2:${ROS_DISTRO}-${ROS_VARIANT}`).
+
+---
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/engine/install/)
+- [VS Code](https://code.visualstudio.com/) + the **Dev Containers** extension
+  (`ms-vscode-remote.remote-containers`)
+- For the Pi variant: VS Code's **Remote – SSH** extension and SSH access to
+  the Pi with Docker installed there.
+
+---
+
+## Workstation variant ([`devcontainer.json`](devcontainer.json))
+
+The default container. Wired for desktop development:
+
+- X11 + Wayland (WSLg) volume mounts and `DISPLAY` / `WAYLAND_DISPLAY` env vars
+- `--network=host`, `--ipc=host` for ROS 2 / DDS
+- Optional Intel iGPU and NVIDIA GPU passthrough (commented)
+- Software OpenGL fallback (`LIBGL_ALWAYS_SOFTWARE=1`)
+
+### Open it
+
+1. Open the workspace folder in VS Code.
+2. Command palette → **Dev Containers: Reopen in Container** → pick the
+   default entry.
+3. First build takes a few minutes. Subsequent opens are instant.
+
+### Common per-machine tweaks
+
+Edit [`devcontainer.json`](devcontainer.json) and adjust:
+
+- `USER_UID` / `USER_GID` if you hit XAuthority errors (see top-level
+  [README.md](../README.md#xauthority)).
+- WSL2 users: comment out the Wayland volume and add the `/usr/lib/wsl` /
+  `/dev/dxg` lines from the FAQ.
+- NVIDIA users: uncomment `--runtime=nvidia` (Linux) or the WSL2 GPU block.
+
+### What you get inside
+
+- ROS 2 (default: **Jazzy**, full desktop) on Ubuntu 24.04
+- `colcon`, `rosdep`, `vcs`, `ament_*` linters, formatters
+- VS Code extensions for C++, Python, CMake, XML, YAML, ROS
+
+---
+
+## Orange Pi 5 variant ([`orangepi/devcontainer.json`](orangepi/devcontainer.json))
+
+Headless variant for the robot itself. Differences from the workstation:
+
+- Forced `--platform=linux/arm64`
+- No X11 / Wayland / WSLg mounts, no `DISPLAY`
+- No NVIDIA bits
+- Slots for hardware passthrough: `/dev/ttyUSB*`, `/dev/i2c-*`,
+  `/dev/video*`, Mali (`/dev/dri`), RKNN NPU (`/dev/rknpu`)
+- Adds `dialout`, `plugdev`, `video` to the container user's groups
+
+### Open it
+
+1. From your workstation, **Remote – SSH** into the Pi (`Remote-SSH: Connect to Host…`).
+2. Open the workspace folder on the Pi.
+3. Command palette → **Dev Containers: Reopen in Container** → pick the
+   **orangepi** entry from the picker.
+4. First build pulls the arm64 variant of `althack/ros2:jazzy-full` and
+   compiles inside the Pi. Plan for ~10–20 minutes the first time.
+
+### Enable your sensors
+
+Open [`orangepi/devcontainer.json`](orangepi/devcontainer.json) and uncomment
+the `--device=` lines that match what's actually plugged in. For CAN, bring
+the interface up on the host first:
+
+```bash
+sudo ip link set can0 up type can bitrate 500000
+```
+
+### Lighter image (optional)
+
+If you don't need RViz / Gazebo inside this container, change the build arg:
+
+```jsonc
+"ROS_VARIANT": "base"
+```
+
+That switches the base image to `althack/ros2:jazzy-base`, which is much
+smaller and faster to build on the Pi.
+
+---
+
+## Useful commands inside any dev container
+
+```bash
+# Pull repos listed in src/ros2.repos
+vcs import src < src/ros2.repos
+# Or as git submodules:
+python3 .devcontainer/repos_to_submodules.py
+
+# Resolve dependencies
+sudo apt-get update && rosdep update
+rosdep install --from-paths src --ignore-src -y
+
+# Build / test / lint
+./build.sh
+./test.sh
+ament_uncrustify --reformat src/
+```
+
+VS Code's task picker (`Terminal → Run Task…`) exposes the same commands as
+well as `new ament_cmake package`, `new ament_python package`, and
+`add submodules from .repos`.
+
+---
+
+## Going from dev container to deployment
+
+The dev containers are for **development**. For the image that ships to the
+robot, see [`../deploy/README.md`](../deploy/README.md).

@@ -1,0 +1,17 @@
+# Keep the build context small and reproducible.
+.git
+.github
+.vscode
+.devcontainer
+build
+install
+log
+data
+
+# Research / docs submodule — not needed in the runtime image.
+src/robot-research
+
+# Local scratch
+*.swp
+*.pyc
+__pycache__/

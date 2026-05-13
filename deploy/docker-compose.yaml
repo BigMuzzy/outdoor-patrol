@@ -1,0 +1,43 @@
+services:
+  robot:
+    image: outdoor-patrol:arm64
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      platforms:
+        - linux/arm64
+    container_name: outdoor-patrol
+    restart: unless-stopped
+    # ROS 2 DDS discovery needs host networking (and host IPC for shared memory).
+    network_mode: host
+    ipc: host
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    environment:
+      # ROS_DOMAIN_ID: "42"
+      # RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      ROS_LOCALHOST_ONLY: "0"
+    # Map host hardware. Uncomment what your robot actually has.
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0   # GPS
+    #   - /dev/ttyACM0:/dev/ttyACM0   # IMU / MCU
+    #   - /dev/i2c-1:/dev/i2c-1
+    #   - /dev/video0:/dev/video0
+    #   - /dev/dri:/dev/dri           # Mali GPU
+    #   - /dev/rknpu:/dev/rknpu       # RK3588 NPU
+    # group_add:
+    #   - dialout
+    #   - video
+    #   - plugdev
+    volumes:
+      # Persist logs / maps / params on the host.
+      - ./data:/data
+      # If you want hot-reload of launch/config files without rebuilding the
+      # image, bind-mount a config dir here instead.
+      # - ./config:/opt/outdoor-patrol/config:ro
+    command: ["bash"]
+    # Replace `command` above with the actual bringup, e.g.:
+    # command: ["ros2", "launch", "outdoor_patrol_bringup", "robot.launch.py"]
