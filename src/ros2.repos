@@ -8,3 +8,7 @@ repositories:
     type: git
     url: https://github.com/ros2/examples.git
     version: ${ROS_DISTRO}
+  robot-research:
+    type: git
+    url: git@github.com:BigMuzzy/robot-research.git
+    version: main

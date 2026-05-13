@@ -1,0 +1,4 @@
+[submodule "src/robot-research"]
+	path = src/robot-research
+	url = git@github.com:BigMuzzy/robot-research.git
+	branch = main
