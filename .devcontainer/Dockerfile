@@ -1,0 +1,3 @@
+ARG ROS_DISTRO=jazzy
+ARG ROS_VARIANT=full
+FROM althack/ros2:${ROS_DISTRO}-${ROS_VARIANT}
