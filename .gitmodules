@@ -2,3 +2,7 @@
 	path = src/robot-research
 	url = git@github.com:BigMuzzy/robot-research.git
 	branch = main
+[submodule "src/esp32-s3-uros-controller"]
+	path = src/esp32-s3-uros-controller
+	url = git@github.com:BigMuzzy/esp32-s3-uros-controller.git
+	branch = main
