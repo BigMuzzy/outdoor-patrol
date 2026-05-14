@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>outdoor_patrol_bringup</name>
+  <version>0.0.1</version>
+  <description>
+    Top-level bringup for the outdoor patrol robot. M0 milestone: minimal
+    URDF + keyboard teleop over the ESP32-S3 micro-ROS chassis controller.
+  </description>
+  <maintainer email="dev@example.com">Outdoor Patrol Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+  <!--
+    micro_ros_agent is not a rosdep key on jazzy; install it from source
+    via micro_ros_setup (see README "Quickstart - M0"). The teleop launch
+    file invokes it by package/executable name, so it must be on
+    AMENT_PREFIX_PATH at runtime.
+  -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

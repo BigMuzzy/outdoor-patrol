@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="outdoor_patrol">
+
+  <!--
+    Minimal diff-drive URDF for M0 (teleop baseline).
+    Frames follow REP-105: base_footprint (ground) -> base_link (chassis).
+    All joints are FIXED in M0 because there is no joint-state source yet;
+    M1 switches wheel joints to 'continuous' when odometry / ros2_control
+    feeds joint_states.
+  -->
+
+  <xacro:arg name="wheel_radius"     default="0.080"/>
+  <xacro:arg name="wheel_separation" default="0.600"/>
+  <xacro:arg name="base_height"      default="0.150"/>
+
+  <xacro:property name="wheel_radius"     value="$(arg wheel_radius)"/>
+  <xacro:property name="wheel_separation" value="$(arg wheel_separation)"/>
+  <xacro:property name="base_height"      value="$(arg base_height)"/>
+
+  <xacro:property name="wheel_width" value="0.060"/>
+  <xacro:property name="body_length" value="0.700"/>
+  <xacro:property name="body_width"  value="0.500"/>
+  <xacro:property name="body_height" value="0.200"/>
+
+  <!-- base_footprint sits on the ground directly below base_link. -->
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+      <material name="chassis_grey">
+        <color rgba="0.4 0.4 0.45 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="base_footprint_to_base_link" type="fixed">
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
+  </joint>
+
+  <xacro:macro name="wheel" params="prefix y_offset">
+    <link name="${prefix}_wheel_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <material name="wheel_black">
+          <color rgba="0.05 0.05 0.05 1.0"/>
+        </material>
+      </visual>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="fixed">
+      <parent link="base_link"/>
+      <child  link="${prefix}_wheel_link"/>
+      <origin xyz="0 ${y_offset} ${-base_height + wheel_radius}"
+              rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:wheel prefix="left"  y_offset="${ wheel_separation/2}"/>
+  <xacro:wheel prefix="right" y_offset="${-wheel_separation/2}"/>
+
+</robot>

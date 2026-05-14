@@ -34,6 +34,62 @@ To remove a linter just delete it's name from this line:
           linter: [cppcheck, cpplint, uncrustify, lint_cmake, xmllint, flake8, pep257]
 ```
 
+## Quickstart — M0 (teleop baseline)
+
+This workspace's first milestone is **M0**: drive the bare diff-drive
+chassis from a keyboard over USB-CDC, with the ESP32-S3 micro-ROS
+controller as the `cmd_vel` sink. See
+[`src/robot-research/notes/outdoor-patrol/recipe/implementation-plan.md`](src/robot-research/notes/outdoor-patrol/recipe/implementation-plan.md#m0--teleop-baseline-diff-drive-cmd_vel)
+for the full milestone spec and acceptance tests.
+
+### Prerequisites for M0
+
+- ESP32-S3 firmware from
+  [`src/esp32-s3-uros-controller`](src/esp32-s3-uros-controller) flashed
+  and connected over USB-C (`/dev/ttyACM0` by default).
+- **Physical kill switch** wired to motor power. Required from M0
+  onward; software has no E-stop in this milestone.
+- `micro_ros_agent` built from source. There is no jazzy debian, so the
+  upstream meta-build tool
+  [`micro_ros_setup`](https://github.com/micro-ROS/micro_ros_setup) is
+  vendored as a submodule at
+  [`src/micro_ros_setup`](src/micro_ros_setup) and bootstrapped by
+  [`scripts/setup-uros-agent.sh`](scripts/setup-uros-agent.sh) (see
+  *Build and run* below). The agent and its pinned XRCE-DDS / vendor
+  dependencies are built into a sibling workspace at `uros_agent_ws/`
+  (gitignored) rather than the main `install/` tree, because
+  `micro_ros_setup` is a meta-build tool that fetches and patches a
+  second set of sources.
+
+### Build and run
+
+```bash
+git clone --recurse-submodules <this-repo>
+./setup.sh        # vcs import + rosdep install
+./build.sh        # colcon build --merge-install --symlink-install
+source install/setup.bash
+
+# One-time (or whenever the micro_ros_setup submodule moves):
+./scripts/setup-uros-agent.sh
+source uros_agent_ws/install/local_setup.bash
+
+# Terminal 1: agent + robot_state_publisher
+ros2 launch outdoor_patrol_bringup teleop.launch.py serial_dev:=/dev/ttyACM0
+
+# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+# Terminal 3 (optional): RViz with the M0 preset
+ros2 launch outdoor_patrol_bringup rviz.launch.py
+```
+
+`config/chassis.yaml` is the single source of truth for wheel radius,
+separation, and speed clamps; mirror any change into the firmware
+constants in
+[`firmware/main/diff_drive.h`](src/esp32-s3-uros-controller/firmware/main/diff_drive.h).
+
+---
+
 ## How to use this template
 
 ### Prerequisites
