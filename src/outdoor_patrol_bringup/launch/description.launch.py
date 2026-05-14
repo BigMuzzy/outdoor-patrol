@@ -10,6 +10,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -30,8 +31,9 @@ def generate_launch_description():
         description='Use simulation clock if true.')
 
     robot_description = {
-        'robot_description': Command(
-            ['xacro ', LaunchConfiguration('urdf_file')])
+        'robot_description': ParameterValue(
+            Command(['xacro ', LaunchConfiguration('urdf_file')]),
+            value_type=str),
     }
 
     robot_state_publisher = Node(
