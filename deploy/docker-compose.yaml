@@ -20,24 +20,41 @@ services:
       # ROS_DOMAIN_ID: "42"
       # RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
       ROS_LOCALHOST_ONLY: "0"
-    # Map host hardware. Uncomment what your robot actually has.
-    # devices:
-    #   - /dev/ttyUSB0:/dev/ttyUSB0   # GPS
-    #   - /dev/ttyACM0:/dev/ttyACM0   # IMU / MCU
+      # USB-CDC device exposed by the ESP32-S3 micro-ROS firmware. Override
+      # at the host with `SERIAL_DEV=/dev/ttyACM1 docker compose up -d` if
+      # the Pi enumerates a different node.
+      SERIAL_DEV: "${SERIAL_DEV:-/dev/ttyACM0}"
+      SERIAL_BAUD: "${SERIAL_BAUD:-115200}"
+    # Map host hardware. Uncomment additional entries as sensors arrive.
+    devices:
+      - "${SERIAL_DEV:-/dev/ttyACM0}:${SERIAL_DEV:-/dev/ttyACM0}"   # ESP32-S3 micro-ROS
+    #   - /dev/ttyUSB0:/dev/ttyUSB0   # GPS (later milestones)
     #   - /dev/i2c-1:/dev/i2c-1
     #   - /dev/video0:/dev/video0
     #   - /dev/dri:/dev/dri           # Mali GPU
     #   - /dev/rknpu:/dev/rknpu       # RK3588 NPU
-    # group_add:
-    #   - dialout
+    group_add:
+      - dialout
     #   - video
     #   - plugdev
+    # Keep stdin open + allocate a TTY so `docker exec` runs the keyboard
+    # teleop in a second shell without losing input.
+    stdin_open: true
+    tty: true
     volumes:
       # Persist logs / maps / params on the host.
       - ./data:/data
       # If you want hot-reload of launch/config files without rebuilding the
       # image, bind-mount a config dir here instead.
       # - ./config:/opt/outdoor-patrol/config:ro
-    command: ["bash"]
-    # Replace `command` above with the actual bringup, e.g.:
-    # command: ["ros2", "launch", "outdoor_patrol_bringup", "robot.launch.py"]
+    # M0 bringup: micro-ROS agent + robot_state_publisher.
+    # Keyboard teleop runs in a second shell:
+    #   docker exec -it outdoor-patrol \
+    #     ros2 run teleop_twist_keyboard teleop_twist_keyboard
+    command:
+      - "ros2"
+      - "launch"
+      - "outdoor_patrol_bringup"
+      - "teleop.launch.py"
+      - "serial_dev:=${SERIAL_DEV:-/dev/ttyACM0}"
+      - "serial_baud:=${SERIAL_BAUD:-115200}"

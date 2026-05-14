@@ -30,17 +30,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /ws
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
-# Resolve dependencies declared in package.xml files.
+# Resolve dependencies declared in package.xml files (covers both our
+# packages and the vendored src/micro_ros_setup submodule).
 RUN apt-get update \
     && rosdep update --rosdistro=${ROS_DISTRO} \
     && rosdep install --from-paths src --ignore-src -y --rosdistro=${ROS_DISTRO} \
     && rm -rf /var/lib/apt/lists/*
 
+# Build the main workspace (includes micro_ros_setup meta-tooling).
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
     && colcon build \
         --merge-install \
         --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+# Build the micro-ROS agent in its sibling workspace, mirroring what
+# scripts/setup-uros-agent.sh does on a developer machine. Path lands at
+# /ws/uros_agent_ws to match the convention used outside the container.
+RUN apt-get update \
+    && ./scripts/setup-uros-agent.sh \
+    && rm -rf /var/lib/apt/lists/* \
+               /ws/uros_agent_ws/build \
+               /ws/uros_agent_ws/log \
+               /ws/uros_agent_ws/src
 
 # ---------- Stage 2: runtime ----------
 FROM ros:${ROS_DISTRO}-ros-base AS runtime
@@ -48,13 +61,17 @@ ARG ROS_DISTRO
 ENV ROS_DISTRO=${ROS_DISTRO}
 
 # Runtime-only deps. Add anything your nodes dlopen at runtime here.
+# teleop_twist_keyboard is pulled in so `docker exec` can run it
+# interactively inside the same container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-rosdep \
+        ros-${ROS_DISTRO}-teleop-twist-keyboard \
     && rm -rf /var/lib/apt/lists/*
 
 # Re-resolve runtime deps based on the built install/ metadata.
 WORKDIR /opt/outdoor-patrol
 COPY --from=builder /ws/install ./install
+COPY --from=builder /ws/uros_agent_ws/install ./uros_agent_ws/install
 COPY --from=builder /ws/src ./src
 RUN apt-get update \
     && rosdep update --rosdistro=${ROS_DISTRO} \
@@ -67,5 +84,5 @@ RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
 # Override at `docker run` / compose time, e.g.:
-#   command: ["ros2", "launch", "outdoor_patrol_bringup", "robot.launch.py"]
+#   command: ["ros2", "launch", "outdoor_patrol_bringup", "teleop.launch.py"]
 CMD ["bash"]
