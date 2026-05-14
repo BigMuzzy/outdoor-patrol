@@ -32,6 +32,10 @@ WORKDIR /ws
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
+# Skip the ESP-IDF firmware subtree — its CMakeLists.txt is not a colcon
+# package and would fail the workspace build.
+RUN touch src/esp32-s3-uros-controller/firmware/COLCON_IGNORE || true
+
 # Resolve dependencies declared in package.xml files (covers both our
 # packages and the vendored src/micro_ros_setup submodule).
 RUN apt-get update \
