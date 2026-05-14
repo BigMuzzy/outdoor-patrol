@@ -12,3 +12,7 @@ repositories:
     type: git
     url: git@github.com:BigMuzzy/robot-research.git
     version: main
+  esp32-s3-uros-controller:
+    type: git
+    url: git@github.com:BigMuzzy/esp32-s3-uros-controller.git
+    version: main

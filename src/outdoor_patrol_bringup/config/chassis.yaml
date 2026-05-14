@@ -1,0 +1,20 @@
+# Chassis geometry and speed limits — single source of truth for M0+.
+#
+# Values mirror the ESP32-S3 firmware constants in
+# src/esp32-s3-uros-controller/firmware/main/diff_drive.h
+# (WHEEL_DIAMETER_M = 0.160, TRACK_WIDTH_M = 0.600,
+#  MAX_MANUAL_SPEED_MS = 1.0, MAX_MANUAL_ANGVEL = 0.67).
+# Keep this file and diff_drive.h in lock-step.
+chassis:
+  # Wheel radius in meters (= WHEEL_DIAMETER_M / 2 in firmware).
+  wheel_radius: 0.080
+  # Distance between left and right wheel centers, meters
+  # (= TRACK_WIDTH_M in firmware).
+  wheel_separation: 0.600
+  # Height of base_link origin above the ground, meters. Used only for
+  # the URDF base_footprint -> base_link offset.
+  base_height: 0.150
+  # Teleop speed clamps — mirror firmware MAX_MANUAL_* limits so that
+  # PC-side teleop never asks for more than the controller will allow.
+  max_linear_velocity: 1.0    # m/s   (MAX_MANUAL_SPEED_MS)
+  max_angular_velocity: 0.67  # rad/s (MAX_MANUAL_ANGVEL)
