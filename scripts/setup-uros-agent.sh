@@ -29,8 +29,13 @@ if [[ ! -f "${MAIN_SETUP}" ]]; then
     exit 1
 fi
 
+# colcon's setup.bash references optional vars like COLCON_TRACE without
+# guarding for `set -u`. Relax nounset across the source so the script
+# still runs under `set -euo pipefail`.
+set +u
 # shellcheck disable=SC1090
 source "${MAIN_SETUP}"
+set -u
 
 mkdir -p "${AGENT_WS}"
 cd "${AGENT_WS}"
