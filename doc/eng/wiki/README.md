@@ -68,3 +68,6 @@ Other articles, ADRs, commits.
 
 ### ros2
 - [cyclonedds-typehash-warnings-from-microros.md](ros2/cyclonedds-typehash-warnings-from-microros.md)
+
+### deployment
+- [pi-container-races-wifi-at-boot.md](deployment/pi-container-races-wifi-at-boot.md)
