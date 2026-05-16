@@ -33,6 +33,8 @@
 		// "--gpus=all"
 	],
 	"containerEnv": {
+		// Use Cyclone DDS to match the robot container. See deploy/docker-compose.yaml.
+		"RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
 		"DISPLAY": "${localEnv:DISPLAY}", // Needed for GUI try ":0" for windows
 		"XAUTHORITY": "${localEnv:XAUTHORITY}",
 		// For Wayland

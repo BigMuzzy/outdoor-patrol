@@ -66,9 +66,12 @@ ENV ROS_DISTRO=${ROS_DISTRO}
 
 # Runtime-only deps. Add anything your nodes dlopen at runtime here.
 # teleop_twist_keyboard is pulled in so `docker exec` can run it
-# interactively inside the same container.
+# interactively inside the same container. rmw-cyclonedds-cpp gives us
+# Cyclone DDS, which handles multi-NIC / WiFi discovery more reliably
+# than the default Fast DDS (see deploy/docker-compose.yaml).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-rosdep \
+        ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
         ros-${ROS_DISTRO}-teleop-twist-keyboard \
     && rm -rf /var/lib/apt/lists/*
 

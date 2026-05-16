@@ -18,7 +18,10 @@ services:
       - apparmor:unconfined
     environment:
       # ROS_DOMAIN_ID: "42"
-      # RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      # Use Cyclone DDS — more robust than Fast DDS when the dev box has
+      # multiple NICs on the same subnet (wired + WiFi) and clients live
+      # on a WiFi AP that filters some multicast.
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
       ROS_LOCALHOST_ONLY: "0"
       # USB-CDC device exposed by the ESP32-S3 micro-ROS firmware. Override
       # at the host with `SERIAL_DEV=/dev/ttyACM1 docker compose up -d` if
