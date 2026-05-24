@@ -116,9 +116,9 @@
     <foc_hfi_obs_ovr_sec>0.001</foc_hfi_obs_ovr_sec>
     <foc_hfi_samples>1</foc_hfi_samples>
     <foc_offsets_cal_mode>1</foc_offsets_cal_mode>
-    <foc_offsets_current__0>2044.13</foc_offsets_current__0>
-    <foc_offsets_current__1>2041.94</foc_offsets_current__1>
-    <foc_offsets_current__2>2044.56</foc_offsets_current__2>
+    <foc_offsets_current__0>2044.42</foc_offsets_current__0>
+    <foc_offsets_current__1>2041.75</foc_offsets_current__1>
+    <foc_offsets_current__2>2044.55</foc_offsets_current__2>
     <foc_offsets_voltage__0>-0.0031</foc_offsets_voltage__0>
     <foc_offsets_voltage__1>0.0008</foc_offsets_voltage__1>
     <foc_offsets_voltage__2>0.0023</foc_offsets_voltage__2>
