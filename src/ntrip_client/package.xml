@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ntrip_client</name>
+  <version>0.0.1</version>
+  <description>
+    Generic RTCM3 source nodes for ROS 2: NTRIP v1/v2 caster client,
+    TCP relay (client and server), and serial-radio relay. All nodes
+    publish framed RTCM3 messages on a common topic so any GNSS driver
+    can ingest corrections regardless of where they come from.
+  </description>
+  <maintainer email="dev@example.com">Outdoor Patrol Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>nmea_msgs</depend>
+  <depend>rtcm_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,5 @@
+serial_rtcm_relay:
+  ros__parameters:
+    port: /dev/ttyUSB1
+    baudrate: 57600
+    frame_id: gnss_link

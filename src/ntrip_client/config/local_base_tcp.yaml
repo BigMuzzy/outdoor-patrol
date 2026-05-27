@@ -1,0 +1,9 @@
+tcp_rtcm_relay:
+  ros__parameters:
+    role: client                   # client | server
+    host: 192.168.1.50             # only used when role=client
+    bind_address: 0.0.0.0          # only used when role=server
+    port: 2102
+    reconnect_backoff_s_min: 1.0
+    reconnect_backoff_s_max: 30.0
+    frame_id: gnss_link

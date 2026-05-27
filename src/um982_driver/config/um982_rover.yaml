@@ -1,0 +1,7 @@
+um982_driver:
+  ros__parameters:
+    port: /dev/ttyUSB0
+    baudrate: 115200
+    frame_id: gnss_link
+    # rover | base_fixed | base_survey | heading2
+    mode: rover

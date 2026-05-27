@@ -1,0 +1,16 @@
+# Example NTRIP caster configuration. Copy to ntrip.yaml and fill in
+# credentials; ntrip.yaml is gitignored.
+ntrip_client:
+  ros__parameters:
+    host: ""                       # e.g. rtk2go.com
+    port: 2101
+    mountpoint: ""                 # e.g. MyMount
+    username: ""
+    password: ""
+    ntrip_version: auto            # 1 | 2 | auto
+    user_agent: "ntrip_client/0.0.1 ROS2"
+    send_gga: true
+    gga_period_s: 10.0
+    reconnect_backoff_s_min: 1.0
+    reconnect_backoff_s_max: 30.0
+    frame_id: gnss_link
