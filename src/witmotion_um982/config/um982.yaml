@@ -1,0 +1,7 @@
+um982_driver:
+  ros__parameters:
+    port: /dev/ttyUSB0
+    baudrate: 921600
+    frame_id: gnss_link
+    imu_frame_id: imu_link
+    publish_rate_hz: 10.0
