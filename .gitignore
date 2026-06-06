@@ -6,3 +6,6 @@ site/*
 # micro-ROS agent sibling workspace, materialized by
 # scripts/setup-uros-agent.sh via `ros2 run micro_ros_setup create_agent_ws.sh`.
 uros_agent_ws/
+
+# CoPilot CLI worktrees
+src/esp32-s3-uros-controller.worktrees
