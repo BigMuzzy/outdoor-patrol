@@ -1,0 +1,50 @@
+# M1 single-input EKF — robot_localization ekf_node.
+#
+# Consumes the chassis wheel odometry (`/odom`, published by the ESP32-S3
+# micro-ROS controller) and broadcasts the `odom -> base_link` transform
+# plus `/odometry/filtered`. This is the ONLY producer of `odom->base_link`
+# (REP-105 single-writer rule); the firmware publishes the odom *message*
+# but must NOT broadcast TF.
+#
+# M2 extends THIS node with an IMU input (imu0). Keep it single-input here.
+#
+# DEPENDS ON firmware work stream 1:
+#   - odom.header.stamp set from rmw_uros_epoch_nanos() (synced agent time).
+#     A zero/unsynced stamp makes the EKF reject or jitter on the input.
+#   - pose/twist covariance diagonals populated (non-zero). The EKF weights
+#     inputs by covariance; zeros read as "infinitely certain" and break
+#     fusion the moment a second sensor arrives at M2.
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true              # zeroes z, roll, pitch and their rates
+    publish_tf: true
+    publish_acceleration: false
+
+    # REP-105 frames. M1 has no map frame yet -> world_frame = odom.
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    # --- odom0: chassis wheel odometry -------------------------------------
+    odom0: /odom
+    # Single diff-drive source: fuse BODY-FRAME VELOCITIES (vx, vyaw), not the
+    # absolute pose. Fusing a lone source's own x/y/yaw just mirrors it back
+    # with lag; integrating its velocities yields a smooth, continuous
+    # odom->base_link. vy stays false (diff drive is non-holonomic).
+    #     [ x,     y,     z,
+    #       roll,  pitch, yaw,
+    #       vx,    vy,    vz,
+    #       vroll, vpitch,vyaw,
+    #       ax,    ay,    az ]
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_queue_size: 10
+    odom0_differential: false
+    odom0_relative: false
+    odom0_nodelay: false
