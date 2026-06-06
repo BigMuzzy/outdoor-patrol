@@ -28,6 +28,9 @@
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>
 
+  <!-- Correction source for the gnss_rtk.launch.py combined bringup. -->
+  <exec_depend>ntrip_client</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_cmake_gtest</test_depend>

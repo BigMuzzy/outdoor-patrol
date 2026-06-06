@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>outdoor_patrol_loc</name>
+  <version>0.0.1</version>
+  <description>
+    M1 localization for the outdoor patrol robot. Single-input
+    robot_localization EKF that consumes the chassis wheel odometry and
+    owns the REP-105 odom -> base_link transform. Extended with IMU at M2.
+  </description>
+  <maintainer email="dev@example.com">Outdoor Patrol Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
