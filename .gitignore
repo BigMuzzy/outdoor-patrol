@@ -9,3 +9,7 @@ uros_agent_ws/
 
 # CoPilot CLI worktrees
 src/esp32-s3-uros-controller.worktrees
+
+# NTRIP caster credentials — copy ntrip.yaml.example to ntrip.yaml and fill in.
+# Never commit real credentials.
+**/ntrip.yaml
