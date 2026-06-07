@@ -36,7 +36,7 @@ See [`config/um982_rover.yaml`](config/um982_rover.yaml). Highlights:
 | `mode` | `rover` | `rover` \| `base_fixed` \| `base_survey` \| `heading2`. |
 | `base_lat/lon/height`, `survey_seconds`, `survey_dist_m` | — | Base-station setup (`base_fixed` / `base_survey`). |
 | `rtcm_ids`, `rtcm_period_s`, `rtcm_out_com` | — | RTCM message set the base emits. |
-| `output_messages`, `output_period_s`, `output_com` | — | Rover NMEA/Unicore output set. |
+| `output_messages.names`, `output_messages.period_s`, `output_messages.com` | `[GPGGA,GPRMC,GPVTG,KSXT]`, `0.2`, `""` | Rover output set. NMEA names are **GP-prefixed** (`GPGGA`…); empty `com` = current port (the USB link). |
 | `antenna_h/e/n` | `0` | Antenna lever-arm offsets. |
 | `unlogall_on_configure` | `true` | Clear the receiver log set on configure. |
 | `save_config` | `false` | Persist config to receiver NVM (`SAVECONFIG`). |

@@ -45,6 +45,18 @@ TEST(FrameSplitter, SkipsLeadingBinaryGarbage)
   EXPECT_EQ(out[0].kind, SentenceKind::kNmea);
 }
 
+TEST(FrameSplitter, CrlfBetweenSentencesIsNotDiscarded)
+{
+  FrameSplitter sp;
+  std::vector<Sentence> out;
+  // Two CRLF-terminated sentences back-to-back. The trailing '\n' of each
+  // line falls in the idle state and must not be counted as a discarded
+  // byte (it is framing whitespace, not garbage).
+  feed(sp, "$GNGGA,A*00\r\n$GNRMC,B*00\r\n", out);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_EQ(sp.bytes_discarded(), 0u);
+}
+
 TEST(FrameSplitter, HandlesByteAtATime)
 {
   FrameSplitter sp;

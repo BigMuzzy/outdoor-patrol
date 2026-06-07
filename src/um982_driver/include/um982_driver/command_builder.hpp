@@ -40,8 +40,10 @@ std::string build_mode_heading2(std::string_view mode);
 /// e.g. build_rtcm_output(1074, "com2", 1.0).
 std::string build_rtcm_output(int rtcm_id, std::string_view com, double period_s);
 
-/// Enable an ASCII / log message at a given period.
-/// e.g. build_log("GNGGA", "com1", 1.0).
+/// Enable an NMEA / Unicore output message at a given period (seconds).
+/// Uses the Unicore shorthand "<MESSAGE> [PORT] <rate>"; an empty `com`
+/// targets the current port. NMEA names are GP-prefixed.
+/// e.g. build_log("GPGGA", "", 0.2) -> "GPGGA 0.2".
 std::string build_log(std::string_view message, std::string_view com, double period_s);
 
 /// Unlog all configured messages.
