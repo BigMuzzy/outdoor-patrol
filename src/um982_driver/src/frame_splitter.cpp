@@ -28,6 +28,10 @@ void FrameSplitter::push(const uint8_t * data, size_t len, std::vector<Sentence>
           state_ = State::kInUnicore;
           current_.clear();
           current_.push_back(static_cast<char>(b));
+        } else if (b == '\r' || b == '\n') {
+          // Inter-sentence line-ending whitespace (the receiver sends CRLF;
+          // the sentence already terminated on '\r', so the trailing '\n'
+          // lands here). Framing, not garbage — don't count it as discarded.
         } else {
           ++bytes_discarded_;
         }
