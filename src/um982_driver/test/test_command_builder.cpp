@@ -34,7 +34,7 @@ TEST(CommandBuilder, Crc32MatchesReferenceImpl)
 {
   const std::string inputs[] = {
     "", "a", "MODE ROVER", "MODE BASE TIME 60.0 1.50", "saveconfig",
-    "log com1 GNGGA ontime 1.00",
+    "GPGGA com2 0.2",
   };
   for (const auto & s : inputs) {
     auto * p = reinterpret_cast<const uint8_t *>(s.data());
@@ -70,7 +70,9 @@ TEST(CommandBuilder, BuildersProduceExpectedPrefixes)
   EXPECT_EQ(build_mode_base_fixed(37.0, -121.0, 50.0).substr(0, 10), "MODE BASE ");
   EXPECT_EQ(build_mode_heading2("FIXLENGTH").substr(0, 23), "MODE HEADING2 FIXLENGTH");
   EXPECT_EQ(build_rtcm_output(1074, "com2", 1.0).substr(0, 15), "rtcm1074 com2 1");
-  EXPECT_EQ(build_log("GNGGA", "com1", 1.0).substr(0, 19), "log com1 GNGGA onti");
+  // Shorthand "<MESSAGE> [PORT] <rate>"; empty com -> current port.
+  EXPECT_EQ(build_log("GPGGA", "", 0.2).substr(0, 9), "GPGGA 0.2");
+  EXPECT_EQ(build_log("GPGGA", "com2", 1.0).substr(0, 12), "GPGGA com2 1");
   EXPECT_EQ(build_unlogall().substr(0, 8), "unlogall");
   EXPECT_EQ(build_saveconfig().substr(0, 10), "saveconfig");
 }

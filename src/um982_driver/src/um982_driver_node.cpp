@@ -82,9 +82,9 @@ void Um982DriverNode::declare_parameters()
   rtcm_period_s_ = this->declare_parameter<double>("rtcm_messages.period_s", 1.0);
   rtcm_out_com_ = this->declare_parameter<std::string>("rtcm_messages.com", "com2");
   output_messages_ = this->declare_parameter<std::vector<std::string>>(
-    "output_messages.names", std::vector<std::string>{"GNGGA", "GNRMC", "GNVTG", "KSXT"});
+    "output_messages.names", std::vector<std::string>{"GPGGA", "GPRMC", "GPVTG", "KSXT"});
   output_period_s_ = this->declare_parameter<double>("output_messages.period_s", 0.2);
-  output_com_ = this->declare_parameter<std::string>("output_messages.com", "com1");
+  output_com_ = this->declare_parameter<std::string>("output_messages.com", "");
   antenna_h_ = this->declare_parameter<double>("antenna_offset.h", 0.0);
   antenna_e_ = this->declare_parameter<double>("antenna_offset.e", 0.0);
   antenna_n_ = this->declare_parameter<double>("antenna_offset.n", 0.0);

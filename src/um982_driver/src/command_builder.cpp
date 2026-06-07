@@ -41,6 +41,16 @@ std::string fmt_double(double v, int precision)
   return std::string(buf);
 }
 
+// Format an output rate as the Unicore manual documents it: bare integers or
+// short decimals (1, 0.5, 0.2, 0.1, 0.05, 0.02 for 1..50 Hz), with no trailing
+// zeros that the command parser would otherwise have to tolerate.
+std::string fmt_rate(double seconds)
+{
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%g", seconds);
+  return std::string(buf);
+}
+
 }  // namespace
 
 uint32_t unicore_crc32(const uint8_t * data, size_t len)
@@ -121,12 +131,21 @@ std::string build_rtcm_output(int rtcm_id, std::string_view com, double period_s
 
 std::string build_log(std::string_view message, std::string_view com, double period_s)
 {
-  std::string body = "log ";
-  body.append(com.data(), com.size());
-  body.push_back(' ');
+  // Unicore data-output shorthand: "<MESSAGE> [PORT] <rate>". Omitting the
+  // port targets the *current* port (the one the command arrived on), which is
+  // what we want when driving the receiver over its USB/Type-C link — the
+  // board's USB bridge is wired to a UART whose name we don't know a priori.
+  // NMEA names must be GP-prefixed (GPGGA, GPRMC, ...); the receiver still
+  // emits $GN... sentences. The earlier "log <com> <msg> ontime <p>" form sent
+  // unprefixed names to a hardcoded COM and produced no output.
+  std::string body;
   body.append(message.data(), message.size());
-  body += " ontime ";
-  body += fmt_double(period_s, 2);
+  if (!com.empty()) {
+    body.push_back(' ');
+    body.append(com.data(), com.size());
+  }
+  body.push_back(' ');
+  body += fmt_rate(period_s);
   return format_unicore_command(body);
 }
 
