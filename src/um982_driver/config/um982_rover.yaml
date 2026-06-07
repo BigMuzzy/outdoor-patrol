@@ -1,6 +1,11 @@
 um982_driver:
   ros__parameters:
-    port: /dev/ttyUSB0
+    # Stable by-id path for the CH340 USB-UART on the UM982/WTRTK-982.
+    # Survives USB re-enumeration (unlike /dev/ttyUSB0) and is the node
+    # name Docker creates when this device is passed through via
+    # --device=/dev/serial/by-id/... in .devcontainer/devcontainer.json.
+    # Override with `-p port:=/dev/ttyUSB0` on bare-metal hosts.
+    port: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
     baudrate: 115200
     frame_id: gnss_link
     # rover | base_fixed | base_survey | heading2
