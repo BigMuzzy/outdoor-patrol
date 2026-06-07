@@ -34,8 +34,8 @@
 		// /dev/ttyUSB0 to avoid USB enumeration races. (Note: a CH340
 		// adapter with no unique serial shares one by-id name across
 		// devices; use --device=/dev/ttyUSB0 or a by-path entry instead.)
-		// "--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
-		// "--device=/dev/ttyACM0", // ESP32-S3 micro-ROS chassis controller
+		"--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
+		"--device=/dev/ttyACM0", // ESP32-S3 micro-ROS chassis controller
 		// uncomment to use Nvidia GPU with Linux, https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 		// "--runtime=nvidia"
 		// uncomment to use Nvidia GPU with Windows WSL2
