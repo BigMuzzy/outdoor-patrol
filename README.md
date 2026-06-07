@@ -88,6 +88,30 @@ separation, and speed clamps; mirror any change into the firmware
 constants in
 [`firmware/main/diff_drive.h`](src/esp32-s3-uros-controller/firmware/main/diff_drive.h).
 
+### M1 — wheel odometry + TF tree
+
+M1 adds the `odom → base_link` transform via a single-input
+`robot_localization` EKF
+([`outdoor_patrol_loc`](src/outdoor_patrol_loc)) that consumes the
+chassis `/odom`. The firmware publishes the odom *message* only; the EKF
+is the sole owner of the transform (REP-105 single-writer).
+
+```bash
+# Terminal 1: agent + robot_state_publisher + EKF (odom -> base_link)
+ros2 launch outdoor_patrol_bringup odometry.launch.py serial_dev:=/dev/ttyACM0
+
+# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+# Terminal 3 (optional): RViz with the M1 odometry preset (fixed frame = odom)
+ros2 launch outdoor_patrol_bringup rviz.launch.py \
+  rviz_config:=$(ros2 pkg prefix outdoor_patrol_bringup)/share/outdoor_patrol_bringup/config/odometry.rviz
+```
+
+Acceptance: joystick-drive a taped 2 m × 2 m square, plot
+`/odometry/filtered` in RViz (closure < 0.3 m), confirm
+`tf2_echo odom base_link` is smooth, and `ros2 topic hz /odom` ≥ 20 Hz.
+
 ---
 
 ## How to use this template
