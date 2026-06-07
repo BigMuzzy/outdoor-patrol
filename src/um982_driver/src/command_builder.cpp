@@ -65,14 +65,15 @@ uint32_t unicore_crc32(const uint8_t * data, size_t len)
 
 std::string format_unicore_command(std::string_view body)
 {
-  uint32_t crc = unicore_crc32(
-    reinterpret_cast<const uint8_t *>(body.data()), body.size());
-  char tail[16];
-  std::snprintf(tail, sizeof(tail), "*%08x\r\n", crc);
+  // Unicore *input* commands are plain abbreviated-ASCII text terminated by
+  // CR/LF and carry NO checksum -- the 32-bit CRC in the Reference Commands
+  // Manual Appendix 1 applies only to the receiver's *output* logs. The UM982
+  // rejects any command that has a '*<crc>' suffix appended (verified against
+  // hardware), so we send the bare command text.
   std::string out;
-  out.reserve(body.size() + sizeof(tail));
+  out.reserve(body.size() + 2);
   out.append(body.data(), body.size());
-  out.append(tail);
+  out.append("\r\n");
   return out;
 }
 

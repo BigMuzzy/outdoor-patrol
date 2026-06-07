@@ -50,7 +50,58 @@ std::optional<int64_t> to_int(const std::string & s)
   return v;
 }
 
+// Unicore/NovAtel 32-bit message CRC, per the Reference Commands Manual,
+// Appendix 1: reflected CRC-32 (poly 0xEDB88320), initial value 0, no final
+// XOR. Distinct from the zlib CRC-32 in command_builder.cpp (init 0xFFFFFFFF,
+// final XOR), which is only used to frame outgoing commands.
+uint32_t unicore_message_crc32(const uint8_t * data, size_t len)
+{
+  uint32_t crc = 0;
+  for (size_t i = 0; i < len; ++i) {
+    crc ^= data[i];
+    for (int k = 0; k < 8; ++k) {
+      crc = (crc & 1U) ? (0xEDB88320U ^ (crc >> 1)) : (crc >> 1);
+    }
+  }
+  return crc;
+}
+
+int hex_nibble(char c)
+{
+  if (c >= '0' && c <= '9') {return c - '0';}
+  if (c >= 'a' && c <= 'f') {return 10 + (c - 'a');}
+  if (c >= 'A' && c <= 'F') {return 10 + (c - 'A');}
+  return -1;
+}
+
 }  // namespace
+
+bool verify_unicore_checksum(std::string_view sentence)
+{
+  while (!sentence.empty() && (sentence.back() == '\r' || sentence.back() == '\n')) {
+    sentence.remove_suffix(1);
+  }
+  // Minimum: '#' + at least one body byte + '*' + 8 hex CRC digits.
+  if (sentence.size() < 11 || sentence.front() != '#') {
+    return false;
+  }
+  auto star = sentence.rfind('*');
+  if (star == std::string_view::npos || star + 9 != sentence.size()) {
+    return false;
+  }
+  uint32_t expected = 0;
+  for (size_t i = star + 1; i < sentence.size(); ++i) {
+    int v = hex_nibble(sentence[i]);
+    if (v < 0) {
+      return false;
+    }
+    expected = (expected << 4) | static_cast<uint32_t>(v);
+  }
+  // CRC covers the bytes between the leading '#' and the '*'.
+  const auto * body = reinterpret_cast<const uint8_t *>(sentence.data() + 1);
+  size_t body_len = star - 1;
+  return unicore_message_crc32(body, body_len) == expected;
+}
 
 std::optional<KsxtSentence> parse_ksxt(std::string_view sentence)
 {

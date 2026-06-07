@@ -119,6 +119,7 @@ private:
   rclcpp::Time last_rtcm_in_time_;
   size_t rtcm_bytes_in_{0};
   size_t sentences_in_{0};
+  size_t unicore_in_{0};
   size_t bad_checksums_{0};
 };
 

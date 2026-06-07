@@ -11,13 +11,14 @@
 namespace um982_driver
 {
 
-/// CRC32 used by Unicore for config-command checksums (zlib CRC32:
-/// polynomial 0xEDB88320, reflected, init 0xFFFFFFFF, xor-out 0xFFFFFFFF).
+/// Standard zlib/PKZIP CRC-32 (polynomial 0xEDB88320, reflected, init
+/// 0xFFFFFFFF, xor-out 0xFFFFFFFF). Retained as a utility; note that UM982
+/// input commands are sent without a checksum (see format_unicore_command).
 uint32_t unicore_crc32(const uint8_t * data, size_t len);
 
-/// Append the Unicore CRC32 checksum to a command body and a trailing
-/// CR/LF. The body must not contain the leading marker or `*`. Result is
-/// `body*XXXXXXXX\r\n`.
+/// Frame a Unicore input command by appending a trailing CR/LF. Unicore input
+/// commands carry NO checksum (the receiver rejects a `*<crc>` suffix), so the
+/// result is simply `body\r\n`. The body must not contain a leading marker.
 std::string format_unicore_command(std::string_view body);
 
 /// Build the rover-mode command.

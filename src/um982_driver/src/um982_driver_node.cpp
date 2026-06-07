@@ -296,6 +296,23 @@ void Um982DriverNode::read_loop()
 
 void Um982DriverNode::handle_sentence(const Sentence & s)
 {
+  // The UM982 emits two ASCII families that use *different* checksums:
+  //   - NMEA '$...' sentences (incl. proprietary $KSXT) end with an 8-bit XOR
+  //     checksum ('*HH').
+  //   - Unicore '#...A' messages (e.g. #UNIHEADINGA, #VERSIONA) end with a
+  //     32-bit CRC ('*HHHHHHHH'), per the Reference Commands Manual Appendix 1.
+  // Each must be verified with the matching scheme; otherwise every valid
+  // Unicore message is miscounted as an NMEA checksum failure (and dropped).
+  if (s.kind == SentenceKind::kUnicoreAscii) {
+    std::lock_guard<std::mutex> lk(state_mutex_);
+    if (verify_unicore_checksum(s.text)) {
+      ++unicore_in_;
+    } else {
+      ++bad_checksums_;
+    }
+    return;  // Payload not consumed yet — heading/position come from $KSXT.
+  }
+
   if (!verify_nmea_checksum(s.text)) {
     std::lock_guard<std::mutex> lk(state_mutex_);
     ++bad_checksums_;
@@ -305,11 +322,6 @@ void Um982DriverNode::handle_sentence(const Sentence & s)
   {
     std::lock_guard<std::mutex> lk(state_mutex_);
     ++sentences_in_;
-  }
-
-  // Identify by first field.
-  if (s.kind != SentenceKind::kNmea) {
-    return;  // Unicore ASCII parsing deferred (we use KSXT for the fast path).
   }
 
   // Publish raw NMEA so NTRIP client can latch GGA.
@@ -503,6 +515,7 @@ void Um982DriverNode::produce_diagnostics(diagnostic_updater::DiagnosticStatusWr
   }
   stat.add("rtcm_bytes_in", static_cast<int>(rtcm_bytes_in_));
   stat.add("sentences_in", static_cast<int>(sentences_in_));
+  stat.add("unicore_msgs_in", static_cast<int>(unicore_in_));
   stat.add("bad_checksums", static_cast<int>(bad_checksums_));
   stat.add("splitter_overflow", static_cast<int>(splitter_.overflow_count()));
   stat.add("splitter_bytes_discarded", static_cast<int>(splitter_.bytes_discarded()));

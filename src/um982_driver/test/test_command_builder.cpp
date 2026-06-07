@@ -52,15 +52,13 @@ TEST(CommandBuilder, Crc32KnownValueForAscii123456789)
     0xcbf43926u);
 }
 
-TEST(CommandBuilder, FormatAppendsHexCrcAndCrLf)
+TEST(CommandBuilder, FormatSendsBareCommandWithCrLf)
 {
+  // Unicore input commands carry no checksum; the receiver rejects a '*<crc>'
+  // suffix. format_unicore_command() emits just "<body>\r\n".
   auto s = format_unicore_command("MODE ROVER");
-  ASSERT_GE(s.size(), 12u + 4u);
-  EXPECT_EQ(s.substr(0, 10), "MODE ROVER");
-  EXPECT_EQ(s.substr(10, 1), "*");
-  EXPECT_EQ(s.substr(s.size() - 2), "\r\n");
-  // 8 hex chars between '*' and '\r\n'.
-  EXPECT_EQ(s.size(), std::string("MODE ROVER").size() + 1 + 8 + 2);
+  EXPECT_EQ(s, "MODE ROVER\r\n");
+  EXPECT_EQ(s.find('*'), std::string::npos);
 }
 
 TEST(CommandBuilder, BuildersProduceExpectedPrefixes)

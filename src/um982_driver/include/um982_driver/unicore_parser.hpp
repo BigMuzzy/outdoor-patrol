@@ -58,6 +58,20 @@ struct KsxtSentence
 /// checksum (e.g. via verify_nmea_checksum()).
 std::optional<KsxtSentence> parse_ksxt(std::string_view sentence);
 
+/// Verify the 32-bit CRC of a Unicore ASCII message (`#...*HHHHHHHH`).
+///
+/// Unicore `#`-framed logs (e.g. `#UNIHEADINGA`, `#VERSIONA`) terminate with a
+/// 32-bit CRC, not the 8-bit XOR used by NMEA `$` sentences. The algorithm is
+/// the one published in the Unicore Reference Commands Manual, Appendix 1
+/// ("32-bit CRC"): reflected CRC-32 (polynomial 0xEDB88320) with an initial
+/// value of 0 and **no** final XOR. The CRC covers the bytes between the
+/// leading `#` and the `*` (both excluded). A trailing CR/LF is tolerated.
+///
+/// Note: this is the receive-path message CRC. It differs from the zlib/PKZIP
+/// CRC-32 utility in command_builder.cpp; UM982 *input* commands themselves are
+/// sent without any checksum.
+bool verify_unicore_checksum(std::string_view sentence);
+
 }  // namespace um982_driver
 
 #endif  // UM982_DRIVER__UNICORE_PARSER_HPP_
