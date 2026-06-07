@@ -1,0 +1,67 @@
+# Inertial Labs binary-protocol IMU driver (KERNEL family and compatible).
+#
+# Data is published in the device's own sensor axes (X = right, Y = forward,
+# Z = up). Resolve mounting with a static transform from base_link to frame_id.
+imu_driver:
+  ros__parameters:
+    # Stable by-id path for the FTDI FT230X USB-UART on the IMU. Survives USB
+    # re-enumeration (unlike /dev/ttyUSB0) and is the node Docker creates when
+    # this device is passed through via --device=/dev/serial/by-id/... in
+    # .devcontainer/devcontainer.json. Override with `-p port:=/dev/ttyUSB0`
+    # on bare-metal hosts.
+    port: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0
+    # MUST equal the device's COM baud (set in the Inertial Labs GUI). The
+    # driver never changes the device baud. This unit ships auto-streaming
+    # Calibrated HR at 2000 Hz, which needs 2 Mbaud. If you lower the rate in
+    # the GUI you may also lower the device baud -- then change this to match.
+    # A mismatch shows up as unknown_frames/bytes_discarded climbing in
+    # /diagnostics. See README "Device data rate & baud".
+    baudrate: 2000000
+    frame_id: imu_link
+
+    # Only "calib_hr" (Calibrated HR Data, command 0x81) is implemented. It
+    # carries HR orientation + gyro + accel + status + temperature at a fixed
+    # scale (no per-range KG/KA dependency).
+    output_format: calib_hr
+
+    # g used to convert accelerometer output (g) to m/s^2, per the KERNEL ICD.
+    gravity: 9.8106
+
+    publish_orientation: true
+    publish_temperature: true
+
+    # Send GetDevInfo / GetBIT once on activation; results appear in diagnostics.
+    query_device_info: true
+
+    # Decimation: publish one of every N parsed samples on ~/data. The device
+    # streams Calibrated HR far faster than a ground-robot EKF needs (this unit
+    # auto-streams 2000 Hz), so throttle here instead of reconfiguring the
+    # device. N=20 at a 2000 Hz device stream -> ~100 Hz published. The device
+    # is still read at full rate (faults/USW are caught at the device rate);
+    # only the published Imu/Temperature messages are decimated. Set N=1 to
+    # publish every sample. See diagnostics: sample_rate_hz (device) vs
+    # publish_rate_hz (after decimation).
+    publish_every_n: 20
+
+    # Expected DEVICE stream rate (Hz) for the diagnostics rate check only.
+    # This checks the raw device sample rate (sample_rate_hz), NOT the decimated
+    # publish_rate_hz. It is a LOWER-BOUND check: a WARN fires only when the
+    # measured device rate drops below half of this. Set it to the device's
+    # configured output data rate (a factor of 2000 Hz). This unit auto-streams
+    # 2000 Hz, so the default is 2000; lower it if you lower the device rate.
+    expected_rate_hz: 2000.0
+
+    # 9-element row-major covariance matrices. Yaw variance is large because the
+    # Calibrated HR heading is relative (no magnetometer -> absolute yaw drifts).
+    orientation_covariance:
+      [0.0025, 0.0, 0.0,
+       0.0, 0.0025, 0.0,
+       0.0, 0.0, 100.0]
+    angular_velocity_covariance:
+      [4.0e-4, 0.0, 0.0,
+       0.0, 4.0e-4, 0.0,
+       0.0, 0.0, 4.0e-4]
+    linear_acceleration_covariance:
+      [0.04, 0.0, 0.0,
+       0.0, 0.04, 0.0,
+       0.0, 0.0, 0.04]

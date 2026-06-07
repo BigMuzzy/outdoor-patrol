@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>imu_driver</name>
+  <version>0.0.1</version>
+  <description>
+    ROS 2 driver for Inertial Labs KERNEL-family IMUs and other devices that
+    speak the same Inertial Labs binary wire protocol (0xAA 0x55 framing, per
+    the KERNEL IMU ICD rev 1.39). Publishes sensor_msgs/Imu and
+    sensor_msgs/Temperature from the device "Calibrated HR Data" output, plus
+    health diagnostics decoded from the Unit Status Word. Data is published in
+    the IMU's own sensor frame; mounting is resolved via URDF/TF.
+  </description>
+  <maintainer email="dev@example.com">Outdoor Patrol Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
