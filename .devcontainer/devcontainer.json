@@ -22,7 +22,20 @@
 		// uncomment to use intel iGPU
 		// "--device=/dev/dri"
 		// Share user run time settings
-		"--volume=/run/user/1000:/run/user/1000" // Change 1000 to match your UID
+		"--volume=/run/user/1000:/run/user/1000", // Change 1000 to match your UID
+		// ── Serial hardware passthrough ──────────────────────────────
+		// Give the container user access to serial devices on the host.
+		"--group-add=dialout",
+		// Pass through the GNSS receiver and/or ESP32-S3 chassis
+		// controller. The node must exist on the host BEFORE the
+		// container starts (Docker binds --device at create time): plug
+		// in the hardware, uncomment the matching line, then rebuild the
+		// container. Prefer a stable /dev/serial/by-id/... symlink over
+		// /dev/ttyUSB0 to avoid USB enumeration races. (Note: a CH340
+		// adapter with no unique serial shares one by-id name across
+		// devices; use --device=/dev/ttyUSB0 or a by-path entry instead.)
+		"--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
+		// "--device=/dev/ttyACM0", // ESP32-S3 micro-ROS chassis controller
 		// uncomment to use Nvidia GPU with Linux, https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 		// "--runtime=nvidia"
 		// uncomment to use Nvidia GPU with Windows WSL2
