@@ -1,0 +1,86 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Imu1
+      Splitter Ratio: 0.5
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Color: 160; 160; 164
+      Cell Size: 1
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: true
+      Marker Scale: 1
+      Value: true
+    - Class: rviz_imu_plugin/Imu
+      Name: Imu
+      Enabled: true
+      Topic:
+        Value: /imu_driver/data
+        Depth: 10
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+        History Policy: Keep Last
+      Acceleration properties:
+        Acc. vector alpha: 1
+        Acc. vector color: 255; 0; 0
+        Acc. vector scale: 0.10000000149011612
+        Derotate acceleration: true
+        Enable acceleration: true
+      Axes properties:
+        Axes length: 1
+        Axes radius: 0.10000000149011612
+        Enable axes: true
+      Box properties:
+        Box alpha: 1
+        Box color: 255; 0; 255
+        Enable box: true
+        x_scale: 1
+        y_scale: 1
+        z_scale: 0.20000000298023224
+      Value: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 5
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 0.5
+      Yaw: 0.785
+      Target Frame: <Fixed Frame>
+    Saved: ~
+Window Geometry:
+  Height: 800
+  Width: 1200
+  Displays:
+    collapsed: false
+  Views:
+    collapsed: false
