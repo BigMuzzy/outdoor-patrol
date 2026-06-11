@@ -18,9 +18,8 @@ IMU (RS-422/USB) ──0xAA55 binary──▶ imu_driver ──▶ ~/data       
 
 The driver is the `imu0` source for the `outdoor_patrol_loc` EKF (M2). It only
 **reads** the device and sends the runtime start/stop command — it never writes
-flash. Configure data rate, baud, **auto-start output format**, alignment angles,
-and output variant with the Inertial Labs GUI beforehand (see the `Auto_Start`
-note below).
+flash. Configure data rate, baud, alignment angles, and output variant with the
+Inertial Labs GUI beforehand.
 
 ## Sensor frame (important)
 
@@ -62,52 +61,21 @@ clockwise-positive heading) per Appendix D of the ICD.
 
 ## Run
 
-This is a **lifecycle** node. The launch file auto-configures and activates it,
-publishes a static `map → imu_link` transform, and opens RViz preloaded to
-visualize `~/data` — so a single command brings the whole chain up:
+This is a **lifecycle** node; `ros2 run` does not auto-activate it.
 
 ```bash
-ros2 launch imu_driver imu_driver.launch.py
-```
-
-Useful launch arguments (all optional):
-
-```bash
-# override just the baud without editing the YAML:
-ros2 launch imu_driver imu_driver.launch.py baud:=2000000
-
-# use a different params file:
 ros2 launch imu_driver imu_driver.launch.py \
   params_file:=src/imu_driver/config/imu_driver.yaml
 
-# headless (no RViz) and/or without the static TF:
-ros2 launch imu_driver imu_driver.launch.py use_rviz:=false use_static_tf:=false
+# override just the baud without editing the YAML:
+ros2 launch imu_driver imu_driver.launch.py baud:=2000000
 
-# drive the lifecycle yourself instead of auto-activating:
-ros2 launch imu_driver imu_driver.launch.py auto_activate:=false
+# drive the lifecycle
 ros2 lifecycle set /imu_driver configure
 ros2 lifecycle set /imu_driver activate
-```
 
-| Launch arg | Default | Description |
-|------------|---------|-------------|
-| `params_file` | package `config/imu_driver.yaml` | IMU driver parameter YAML. |
-| `baud` | *(empty)* | Override `baudrate` from the params file. |
-| `auto_activate` | `true` | Auto-configure + activate the lifecycle node on launch. |
-| `use_static_tf` | `true` | Publish a static `parent_frame → imu_frame` transform. |
-| `parent_frame` | `map` | Parent frame for the static transform. |
-| `imu_frame` | `imu_link` | IMU child frame (must match the driver `frame_id`). |
-| `use_rviz` | `true` | Open RViz preloaded with the IMU visualization (`rviz/imu.rviz`). |
-| `rviz_config` | package `rviz/imu.rviz` | RViz config to load. |
-
-> The RViz `Imu` display (from `rviz_imu_plugin`) subscribes with **Best Effort**
-> QoS to match the sensor-data publisher. The orientation box only rotates when
-> the IMU physically moves; absolute yaw drifts (relative heading, no
-> magnetometer).
-
-```bash
 # observe (publish_rate_hz is post-decimation; sample_rate_hz is the device)
-ros2 topic hz /imu_driver/data --qos-reliability best_effort
+ros2 topic hz /imu_driver/data
 ros2 topic echo /diagnostics --once
 ```
 
@@ -140,13 +108,9 @@ Max CalibHR rate is capped by baud, `max ≈ baud / (11 × 60 bytes)` rounded do
 to a factor of 2000 (ICD Table 6.27): **125 Hz @ 115200**, 500 Hz @ 460800,
 **2000 Hz @ 2 000 000**.
 
-> **As tested 2026-06-11** (KERNEL-201, SN `K58F8162`, fw
-> `KERNEL-201-1.1.1.2`): the unit's `Auto_Start` (RAM/flash param `0x03A9`) is now
-> set to **`0x81` = Calibrated HR** (changed from the factory `0x8F` = GA Data via
-> a `SaveFlash` write — see below). It streams at **2000 Hz**, which needs
-> **2 Mbaud** — hence the config defaults to `baudrate: 2000000`. The driver still
-> sends `0x81` on activate, but because the auto-start format is now CalibHR, a
-> device reset auto-resumes the format the driver parses (no more GA Data flood).
+> **As tested 2026-06-07** (KERNEL-201, SN `K58F8162`): the unit ships
+> auto-streaming Calibrated HR at **2000 Hz**, which needs **2 Mbaud** — hence
+> the config defaults to `baudrate: 2000000`.
 
 ### If you lower the rate in the GUI later
 
@@ -166,39 +130,6 @@ baud all three counters sit at ~0. So if the IMU data looks wrong, **check those
 counters first** — a `baudrate` vs device-COM-baud mismatch is the usual cause,
 not the parser.
 
-### Symptom of an `Auto_Start` / device-reset revert (the *other* `unknown_frames` cause)
-
-A second, distinct cause of climbing `unknown_frames` is the device reverting to
-its **`Auto_Start` output format** after a reset. This unit **shipped with
-`Auto_Start = 0x8F` (GA Data)**, so any reset (e.g. a power transient — running
-RViz on the same USB-powered rail was enough to brown it out) made it reboot and
-**resume streaming GA Data (`0x8F`), not Calibrated HR**. The driver only parses
-`0x81`, so orientation froze and `/diagnostics` showed:
-
-- `unknown_frames` climbing with `unknown_ids` dominated by **`0x8F`** (32-byte
-  payload), led by a 2-byte `data_id=0x00` device **boot/ack** frame;
-- **`checksum_errors` and `bytes_discarded` ≈ 0** (the frames are valid — the
-  device really is sending GA Data) and `sample_rate_hz` (CalibHR) drops to 0.
-
-That clean-checksum signature is how you tell it apart from a **baud mismatch**
-(above), where checksums fail, `bytes_discarded` climbs, and the bogus `data_id`s
-are random.
-
-**Fix (applied):** the device's `Auto_Start` was changed to **`0x81`
-(Calibrated HR)** with a `SaveFlash` write to param `0x03A9`, confirmed by
-`ReadRAM` (reads `0x81`, not `0x8F`). Now a reset auto-resumes CalibHR and the
-driver recovers transparently — verified: a full driver+RViz run logged **zero
-`0x8F` frames**; the only `unknown_ids` were the `0x00` boot frames, and the
-stream returned to a clean 2000 Hz after each one. To redo this in the Inertial
-Labs GUI, set `Auto_Start` to `0x81` (or `0x00` = disabled) and `SaveFlash`.
-
-> **Still open — power/brownout:** with `Auto_Start=0x81` the format is fixed,
-> but the IMU still **repeatedly resets while RViz runs** (each run logged a
-> growing count of `0x00` boot frames, with brief `sample_rate_hz=0` /
-> `data_age` gaps as the box momentarily freezes then resumes). This is a power
-> problem, not a protocol one — give the IMU a **powered USB hub or a dedicated
-> 5 V supply** so host/GPU load can't brown it out.
-
 ## Protocol summary
 
 - Frame: `AA 55 | msg_type | data_id | length(2, LE) | payload | checksum(2, LE)`
@@ -209,10 +140,6 @@ Labs GUI, set `Auto_Start` to `0x81` (or `0x00` = disabled) and `SaveFlash`.
 - Calibrated HR payload (52 bytes): heading/pitch/roll (deg·1000, int32),
   gyro XYZ (deg/s·1e5, int32), accel XYZ (g·1e6, int32), mag (0), counter, USW,
   temperature (°C·10). All multi-byte fields are little-endian.
-- GA Data payload (`0x8F`, 32 bytes): gyro XYZ (deg/s·1e5, int32), accel XYZ
-  (g·1e6, int32), counter, USW, reserved, temperature (°C·10) — **no
-  orientation**. The driver does not parse this format; it appears only when the
-  device auto-starts/reverts to it (see the `Auto_Start` revert symptom above).
 
 ## Build & test
 
