@@ -15,6 +15,11 @@
 		},
 		"options": ["--pull", "--platform=linux/arm64"]
 	},
+	// Runs on the HOST (the Pi) before the container is created. Installs the
+	// udev rule that creates the stable /dev/esp32-chassis symlink so the
+	// ESP32-S3 chassis controller passthrough works (udev/dev are host-managed;
+	// this cannot be done in the Dockerfile). Idempotent; may prompt for sudo.
+	"initializeCommand": "${localWorkspaceFolder}/.devcontainer/install-udev-rules.sh",
 	"runArgs": [
 		"--platform=linux/arm64",
 		"--network=host",
@@ -23,35 +28,50 @@
 		"--security-opt=seccomp:unconfined",
 		"--security-opt=apparmor:unconfined",
 
-		// --- Hardware passthrough (uncomment what your robot actually has) ---
+		// Give the container user access to typical hw groups on the host.
+		"--group-add=dialout",
+		"--group-add=plugdev",
+		"--group-add=video",
+		// "--group-add=i2c",
+		// "--group-add=gpio"
+
+		// TEMPORARY (bring-up): map ALL host devices live instead of pinning
+		// individual nodes. Docker's `--device` binds a node at container-CREATE
+		// time and never tracks USB re-enumeration, so a device reboot (e.g. the
+		// ESP32-S3's native USB-Serial/JTAG, which leaves the bus on every chip
+		// reset) leaves the in-container node stale -> the agent opens fd:3 but
+		// never gets a session (errno 6). Bind-mounting /dev makes nodes
+		// appear/disappear live, and --privileged grants the device-cgroup
+		// access to use them. On the RK3588 this also covers the
+		// i2c/spi/gpio/video/dri/rknpu nodes for free. Permissive; tighten back
+		// to specific --device entries (or a device-cgroup-rule + /dev mount)
+		// once the stack is stable.
+		"--privileged",
+		"--volume=/dev:/dev"
+
+		// --- Reference: pin individual nodes once locked down (uncomment what
+		//     your robot actually has). ---
 		// Serial / USB-serial (GPS, IMU, microcontrollers)
-		// "--device=/dev/ttyUSB0",
-		// "--device=/dev/ttyACM0",
+		// "--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
+		// "--device=/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0", // Inertial Labs KERNEL IMU (FTDI FT230X)
+		// "--device=/dev/esp32-chassis", // ESP32-S3 micro-ROS chassis controller (host udev symlink)
 		// I2C / SPI / GPIO (RK3588 exposes these)
 		// "--device=/dev/i2c-1",
 		// "--device=/dev/spidev0.0",
 		// "--device=/dev/gpiochip0",
 		// Cameras (UVC / MIPI-CSI via V4L2)
 		// "--device=/dev/video0",
-		// CAN bus (if using a CAN HAT)
-		// Requires `ip link set can0 up` on the host first.
+		// CAN bus (if using a CAN HAT) -- requires `ip link set can0 up` on the host first.
 		// Mali GPU / RKNN NPU (optional)
 		// "--device=/dev/dri",
 		// "--device=/dev/dri/renderD128",
 		// "--device=/dev/rknpu",
-
-		// Give the container user access to typical hw groups on the host.
-		"--group-add=dialout",
-		"--group-add=plugdev",
-		"--group-add=video"
-		// "--group-add=i2c",
-		// "--group-add=gpio"
 	],
 	"containerEnv": {
 		// Headless: no DISPLAY/WAYLAND_DISPLAY/XAUTHORITY here.
-		// ROS 2 / DDS tuning lives here if needed.
+		// Use Cyclone DDS to match the robot container. See deploy/docker-compose.yaml.
+		"RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
 		// "ROS_DOMAIN_ID": "42",
-		// "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
 	},
 	"remoteUser": "ros",
 	"customizations": {

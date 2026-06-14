@@ -1,0 +1,11 @@
+# Stable, colon-free symlink for the ESP32-S3 micro-ROS chassis controller.
+#
+# Docker's --device flag splits on ':' (host:container:perms), so the
+# /dev/serial/by-id/... path fails because it embeds the chip MAC
+# (1C:DB:D4:7A:29:9C). This rule creates /dev/esp32-chassis matched on the
+# USB vendor/product/serial, which is stable regardless of ttyACM* order.
+#
+# Install:
+#   sudo cp .devcontainer/99-esp32-chassis.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", ATTRS{serial}=="1C:DB:D4:7A:29:9C", SYMLINK+="esp32-chassis"

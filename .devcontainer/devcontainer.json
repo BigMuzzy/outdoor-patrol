@@ -9,6 +9,11 @@
 		},
 		"options": ["--pull"]
 	},
+	// Runs on the HOST before the container is created. Installs the udev
+	// rule that creates the stable /dev/esp32-chassis symlink so the
+	// --device passthrough below works (udev/dev are host-managed; this
+	// cannot be done in the Dockerfile). Idempotent; may prompt for sudo.
+	"initializeCommand": "${localWorkspaceFolder}/.devcontainer/install-udev-rules.sh",
 	"runArgs": [
 		"--network=host",
 		"--cap-add=SYS_PTRACE",
@@ -26,17 +31,22 @@
 		// ── Serial hardware passthrough ──────────────────────────────
 		// Give the container user access to serial devices on the host.
 		"--group-add=dialout",
-		// Pass through the GNSS receiver and/or ESP32-S3 chassis
-		// controller. The node must exist on the host BEFORE the
-		// container starts (Docker binds --device at create time): plug
-		// in the hardware, uncomment the matching line, then rebuild the
-		// container. Prefer a stable /dev/serial/by-id/... symlink over
-		// /dev/ttyUSB0 to avoid USB enumeration races. (Note: a CH340
-		// adapter with no unique serial shares one by-id name across
-		// devices; use --device=/dev/ttyUSB0 or a by-path entry instead.)
-		//"--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
-		"--device=/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0", // Inertial Labs KERNEL IMU (FTDI FT230X)
-		// "--device=/dev/ttyACM0", // ESP32-S3 micro-ROS chassis controller
+		// TEMPORARY (bring-up): map ALL host devices live instead of
+		// pinning individual nodes. Docker's `--device` binds a node at
+		// container-CREATE time and never tracks USB re-enumeration, so a
+		// device reboot (e.g. the ESP32-S3's native USB-Serial/JTAG, which
+		// leaves the bus on every chip reset) leaves the in-container node
+		// stale -> the agent opens fd:3 but never gets a session (errno 6).
+		// Bind-mounting /dev makes nodes appear/disappear live, and
+		// --privileged grants the device-cgroup access to use them. This is
+		// permissive; tighten back to specific --device entries (or a
+		// device-cgroup-rule + /dev mount) once the stack is stable.
+		"--privileged",
+		"--volume=/dev:/dev",
+		// Reference: previously-pinned nodes (re-enable once locked down).
+		// "--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
+		// "--device=/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0", // Inertial Labs KERNEL IMU (FTDI FT230X)
+		// "--device=/dev/esp32-chassis", // ESP32-S3 micro-ROS chassis controller (host udev symlink)
 		// uncomment to use Nvidia GPU with Linux, https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 		// "--runtime=nvidia"
 		// uncomment to use Nvidia GPU with Windows WSL2

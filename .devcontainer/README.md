@@ -5,8 +5,8 @@ This folder holds the VS Code Dev Container definitions for working on the
 
 | Folder | Target host | GUI | Hardware passthrough | When to use |
 |---|---|---|---|---|
-| `./` (this folder) | Workstation (x86_64 / WSL2 / arm64 Mac) | X11 / Wayland / WSLg | none | Day-to-day development, simulation, RViz |
-| [`orangepi/`](orangepi/devcontainer.json) | Orange Pi 5 (RK3588, arm64) | headless | sensors via `--device` | On-device development & debugging on the robot |
+| `./` (this folder) | Workstation (x86_64 / WSL2 / arm64 Mac) | X11 / Wayland / WSLg | `/dev` bind-mount (privileged) | Day-to-day development, simulation, RViz |
+| [`orangepi/`](orangepi/devcontainer.json) | Orange Pi 5 (RK3588, arm64) | headless | `/dev` bind-mount (privileged) | On-device development & debugging on the robot |
 
 Both reuse the same [`Dockerfile`](Dockerfile) (based on `althack/ros2:${ROS_DISTRO}-${ROS_VARIANT}`).
 
@@ -28,6 +28,10 @@ The default container. Wired for desktop development:
 
 - X11 + Wayland (WSLg) volume mounts and `DISPLAY` / `WAYLAND_DISPLAY` env vars
 - `--network=host`, `--ipc=host` for ROS 2 / DDS
+- Cyclone DDS (`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`) to match the robot /
+  deploy container
+- Serial / device passthrough for bring-up — see
+  [Hardware passthrough](#hardware-passthrough-both-variants)
 - Optional Intel iGPU and NVIDIA GPU passthrough (commented)
 - Software OpenGL fallback (`LIBGL_ALWAYS_SOFTWARE=1`)
 
@@ -63,9 +67,14 @@ Headless variant for the robot itself. Differences from the workstation:
 - Forced `--platform=linux/arm64`
 - No X11 / Wayland / WSLg mounts, no `DISPLAY`
 - No NVIDIA bits
-- Slots for hardware passthrough: `/dev/ttyUSB*`, `/dev/i2c-*`,
-  `/dev/video*`, Mali (`/dev/dri`), RKNN NPU (`/dev/rknpu`)
-- Adds `dialout`, `plugdev`, `video` to the container user's groups
+- Adds `dialout`, `plugdev`, `video` to the container user's groups (plus
+  commented `i2c` / `gpio` slots)
+
+It shares the workstation's serial / device passthrough and Cyclone DDS
+settings — see [Hardware passthrough](#hardware-passthrough-both-variants). The
+commented reference `--device=` lines add the RK3588-specific `/dev/i2c-*`,
+`/dev/spidev*`, `/dev/gpiochip*`, Mali (`/dev/dri`) and RKNN NPU (`/dev/rknpu`)
+nodes.
 
 ### Open it
 
@@ -78,13 +87,13 @@ Headless variant for the robot itself. Differences from the workstation:
 
 ### Enable your sensors
 
-Open [`orangepi/devcontainer.json`](orangepi/devcontainer.json) and uncomment
-the `--device=` lines that match what's actually plugged in. For CAN, bring
-the interface up on the host first:
-
-```bash
-sudo ip link set can0 up type can bitrate 500000
-```
+During bring-up there's nothing to do: `--privileged` + `--volume=/dev:/dev`
+expose every host device node live, and `initializeCommand` installs the
+`/dev/esp32-chassis` udev symlink on the Pi. To lock this down later, comment
+out the privileged block and uncomment the matching `--device=` lines in
+[`orangepi/devcontainer.json`](orangepi/devcontainer.json). See
+[Hardware passthrough](#hardware-passthrough-both-variants) for details,
+including the CAN setup note.
 
 ### Lighter image (optional)
 
@@ -96,6 +105,39 @@ If you don't need RViz / Gazebo inside this container, change the build arg:
 
 That switches the base image to `althack/ros2:jazzy-base`, which is much
 smaller and faster to build on the Pi.
+
+---
+
+## Hardware passthrough (both variants)
+
+Both variants currently expose hardware the **permissive** way, for bring-up:
+
+- `--privileged` + `--volume=/dev:/dev` map **all** host device nodes into the
+  container, live. This is deliberate: Docker's `--device` binds a node at
+  container-create time and never tracks USB re-enumeration, so a device reset
+  (e.g. the ESP32-S3's native USB-Serial/JTAG, which drops off the bus on every
+  chip reset) would otherwise leave a stale node inside the container.
+  Bind-mounting `/dev` makes nodes appear and disappear just as they do on the
+  host.
+- `initializeCommand` runs [`install-udev-rules.sh`](install-udev-rules.sh) on
+  the **host** before the container is created. It installs
+  [`99-esp32-chassis.rules`](99-esp32-chassis.rules), creating a stable
+  `/dev/esp32-chassis` symlink for the ESP32-S3 chassis controller (its
+  `by-id` path embeds a colon-laden MAC that `--device` can't parse). The
+  script is idempotent and may prompt for `sudo`.
+- The per-device `--device=` lines stay **commented** in both
+  `devcontainer.json` files as a reference for tightening this back down once
+  the stack is stable.
+
+> ⚠️ `--privileged` is broad. It's fine for bring-up on a trusted machine, but
+> switch back to explicit `--device=` entries (or a device-cgroup rule plus the
+> `/dev` mount) before relying on this beyond development.
+
+For CAN on the Pi, bring the interface up on the host first:
+
+```bash
+sudo ip link set can0 up type can bitrate 500000
+```
 
 ---
 
