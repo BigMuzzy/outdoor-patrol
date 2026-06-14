@@ -1,17 +1,18 @@
 // Dev container variant for on-device development on Orange Pi 5 (RK3588, arm64).
-// Reuses the workstation Dockerfile but strips X11/Wayland/NVIDIA bits and adds
-// hardware passthrough for typical robot sensors.
+// Uses a dedicated arm64 Dockerfile (./Dockerfile) based on the official,
+// multi-arch `ros` image. The workstation image (althack/ros2) is amd64-only
+// and fails to pull on the Pi ("no matching manifest for linux/arm64/v8").
+// Headless: no X11/Wayland/NVIDIA bits; adds hardware passthrough for typical
+// robot sensors.
 //
 // Usage: VS Code → "Dev Containers: Reopen in Container" → pick "orangepi".
 {
 	"name": "outdoor-patrol (Orange Pi 5)",
-	"dockerFile": "../Dockerfile",
-	"context": "..",
+	"dockerFile": "Dockerfile",
+	"context": ".",
 	"build": {
 		"args": {
-			"ROS_DISTRO": "jazzy",
-			// "ros-base" would be lighter, but keep parity with workstation by default.
-			"ROS_VARIANT": "full"
+			"ROS_DISTRO": "jazzy"
 		},
 		"options": ["--pull", "--platform=linux/arm64"]
 	},

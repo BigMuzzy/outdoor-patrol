@@ -8,7 +8,11 @@ This folder holds the VS Code Dev Container definitions for working on the
 | `./` (this folder) | Workstation (x86_64 / WSL2 / arm64 Mac) | X11 / Wayland / WSLg | `/dev` bind-mount (privileged) | Day-to-day development, simulation, RViz |
 | [`orangepi/`](orangepi/devcontainer.json) | Orange Pi 5 (RK3588, arm64) | headless | `/dev` bind-mount (privileged) | On-device development & debugging on the robot |
 
-Both reuse the same [`Dockerfile`](Dockerfile) (based on `althack/ros2:${ROS_DISTRO}-${ROS_VARIANT}`).
+The workstation variant builds from [`Dockerfile`](Dockerfile) (based on
+`althack/ros2:${ROS_DISTRO}-${ROS_VARIANT}`, which is published **amd64-only**).
+The Orange Pi variant builds from its own [`orangepi/Dockerfile`](orangepi/Dockerfile),
+based on the official, multi-arch `ros:${ROS_DISTRO}-ros-base` image — `althack/ros2`
+has no arm64 manifest, so it cannot be pulled on the Pi.
 
 ---
 
@@ -64,6 +68,9 @@ Edit [`devcontainer.json`](devcontainer.json) and adjust:
 
 Headless variant for the robot itself. Differences from the workstation:
 
+- Dedicated arm64 [`orangepi/Dockerfile`](orangepi/Dockerfile) on the official
+  multi-arch `ros:jazzy-ros-base` image (the workstation's `althack/ros2` base
+  is amd64-only)
 - Forced `--platform=linux/arm64`
 - No X11 / Wayland / WSLg mounts, no `DISPLAY`
 - No NVIDIA bits
@@ -82,8 +89,8 @@ nodes.
 2. Open the workspace folder on the Pi.
 3. Command palette → **Dev Containers: Reopen in Container** → pick the
    **orangepi** entry from the picker.
-4. First build pulls the arm64 variant of `althack/ros2:jazzy-full` and
-   compiles inside the Pi. Plan for ~10–20 minutes the first time.
+4. First build pulls the official arm64 `ros:jazzy-ros-base` image and compiles
+   inside the Pi. Plan for ~10–20 minutes the first time.
 
 ### Enable your sensors
 
@@ -95,16 +102,13 @@ out the privileged block and uncomment the matching `--device=` lines in
 [Hardware passthrough](#hardware-passthrough-both-variants) for details,
 including the CAN setup note.
 
-### Lighter image (optional)
+### Adding extra ROS packages
 
-If you don't need RViz / Gazebo inside this container, change the build arg:
-
-```jsonc
-"ROS_VARIANT": "base"
-```
-
-That switches the base image to `althack/ros2:jazzy-base`, which is much
-smaller and faster to build on the Pi.
+The Pi image is already the lean `ros-base` (no RViz / Gazebo — they aren't
+useful on a headless robot anyway). If you need more ROS packages inside the
+container, add an `apt-get install ros-${ROS_DISTRO}-<pkg>` line to
+[`orangepi/Dockerfile`](orangepi/Dockerfile) and rebuild, or pull them in via
+your packages' `package.xml` + `rosdep install`.
 
 ---
 
