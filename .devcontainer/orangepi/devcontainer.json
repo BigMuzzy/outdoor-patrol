@@ -21,6 +21,12 @@
 	// ESP32-S3 chassis controller passthrough works (udev/dev are host-managed;
 	// this cannot be done in the Dockerfile). Idempotent; may prompt for sudo.
 	"initializeCommand": "${localWorkspaceFolder}/.devcontainer/install-udev-rules.sh",
+	// Runs INSIDE the container once after creation. Resolves the ROS
+	// dependencies declared in each package.xml (e.g. nmea_msgs, rtcm_msgs)
+	// via rosdep so they survive image rebuilds — mirrors deploy/Dockerfile
+	// and setup.sh. Does not run `vcs import` (that needs git SSH creds); run
+	// ./setup.sh manually when you also need to pull the .repos sources.
+	"postCreateCommand": "sudo rosdep init 2>/dev/null || true; sudo apt-get update && rosdep update --rosdistro=$ROS_DISTRO && rosdep install --from-paths src --ignore-src -y --rosdistro=$ROS_DISTRO",
 	"runArgs": [
 		"--platform=linux/arm64",
 		"--network=host",
