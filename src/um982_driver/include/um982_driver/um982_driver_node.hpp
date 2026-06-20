@@ -117,6 +117,8 @@ private:
   std::optional<double> last_correction_age_s_;
   rclcpp::Time last_fix_time_;
   rclcpp::Time last_rtcm_in_time_;
+  rclcpp::Time last_gst_time_;
+  std::optional<NmeaGst> last_gst_;
   size_t rtcm_bytes_in_{0};
   size_t sentences_in_{0};
   size_t unicore_in_{0};

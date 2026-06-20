@@ -57,6 +57,16 @@ struct NmeaVtg
   double speed_over_ground_mps{0.0};
 };
 
+/// NMEA GST — GNSS pseudorange error statistics. Carries the receiver's
+/// measured 1-sigma position error estimates (metres).
+struct NmeaGst
+{
+  std::string utc;                          ///< raw HHMMSS.SS
+  double std_lat_m{0.0};                    ///< 1-sigma latitude (North) error
+  double std_lon_m{0.0};                    ///< 1-sigma longitude (East) error
+  double std_alt_m{0.0};                    ///< 1-sigma altitude (Up) error
+};
+
 /// XOR-checksum verifier. Accepts the full sentence including leading `$`
 /// (or `!`) and the trailing `*HH` (case-insensitive). CR/LF tolerated.
 bool verify_nmea_checksum(std::string_view sentence);
@@ -76,6 +86,10 @@ std::optional<NmeaRmc> parse_rmc(std::string_view sentence);
 
 /// Parse a `$..VTG` sentence.
 std::optional<NmeaVtg> parse_vtg(std::string_view sentence);
+
+/// Parse a `$..GST` sentence (pseudorange error statistics). The lat/lon/alt
+/// standard deviations give the receiver's measured 1-sigma position errors.
+std::optional<NmeaGst> parse_gst(std::string_view sentence);
 
 }  // namespace um982_driver
 

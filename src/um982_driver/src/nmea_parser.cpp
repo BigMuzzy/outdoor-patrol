@@ -254,4 +254,23 @@ std::optional<NmeaVtg> parse_vtg(std::string_view sentence)
   return vtg;
 }
 
+std::optional<NmeaGst> parse_gst(std::string_view sentence)
+{
+  auto fields = split_nmea_fields(sentence);
+  // id + utc + rms + smjr + smnr + orient + lat_std + lon_std + alt_std = 9.
+  if (fields.size() < 9) {
+    return std::nullopt;
+  }
+  const std::string & id = fields[0];
+  if (id.size() < 3 || id.compare(id.size() - 3, 3, "GST") != 0) {
+    return std::nullopt;
+  }
+  NmeaGst gst;
+  gst.utc = fields[1];
+  if (auto v = parse_double(fields[6])) {gst.std_lat_m = *v;}
+  if (auto v = parse_double(fields[7])) {gst.std_lon_m = *v;}
+  if (auto v = parse_double(fields[8])) {gst.std_alt_m = *v;}
+  return gst;
+}
+
 }  // namespace um982_driver

@@ -26,6 +26,10 @@ namespace
 {
 constexpr double kDegToRad = M_PI / 180.0;
 
+// A GST sentence's measured sigmas are used for NavSatFix covariance only
+// while fresh; beyond this age we revert to the quality/HDOP heuristic.
+constexpr double kGstStaleSec = 2.0;
+
 // Heuristic horizontal accuracy multipliers keyed on GGA fix quality.
 // Used to seed NavSatFix covariance when the receiver does not provide
 // a BESTNAV/BESTPOSA sigma directly. Units: metres of 1-sigma per HDOP.
@@ -46,7 +50,8 @@ double quality_to_sigma_m(NmeaFixQuality q)
 Um982DriverNode::Um982DriverNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("um982_driver", options),
   last_fix_time_(0, 0, RCL_ROS_TIME),
-  last_rtcm_in_time_(0, 0, RCL_ROS_TIME)
+  last_rtcm_in_time_(0, 0, RCL_ROS_TIME),
+  last_gst_time_(0, 0, RCL_ROS_TIME)
 {
   declare_parameters();
 }
@@ -82,7 +87,7 @@ void Um982DriverNode::declare_parameters()
   rtcm_period_s_ = this->declare_parameter<double>("rtcm_messages.period_s", 1.0);
   rtcm_out_com_ = this->declare_parameter<std::string>("rtcm_messages.com", "com2");
   output_messages_ = this->declare_parameter<std::vector<std::string>>(
-    "output_messages.names", std::vector<std::string>{"GPGGA", "GPRMC", "GPVTG", "KSXT"});
+    "output_messages.names", std::vector<std::string>{"GPGGA", "GPGST", "GPRMC", "GPVTG", "KSXT"});
   output_period_s_ = this->declare_parameter<double>("output_messages.period_s", 0.2);
   output_com_ = this->declare_parameter<std::string>("output_messages.com", "");
   antenna_h_ = this->declare_parameter<double>("antenna_offset.h", 0.0);
@@ -347,6 +352,12 @@ void Um982DriverNode::handle_sentence(const Sentence & s)
     if (auto v = parse_vtg(s.text)) {
       publish_vtg(*v);
     }
+  } else if (s.text.size() > 6 && s.text.compare(3, 3, "GST") == 0) {
+    if (auto g = parse_gst(s.text)) {
+      std::lock_guard<std::mutex> lk(state_mutex_);
+      last_gst_ = *g;
+      last_gst_time_ = now();
+    }
   } else if (s.text.size() > 5 && s.text.compare(1, 4, "KSXT") == 0) {
     if (auto k = parse_ksxt(s.text)) {
       publish_ksxt(*k);
@@ -383,13 +394,33 @@ void Um982DriverNode::publish_gga(const NmeaGga & gga, const std::string & /*raw
   fix.latitude = gga.latitude_deg;
   fix.longitude = gga.longitude_deg;
   fix.altitude = gga.altitude_m;
-  double sigma = quality_to_sigma_m(gga.quality) * std::max(0.5, gga.hdop);
-  double var = sigma * sigma;
-  fix.position_covariance[0] = var;
-  fix.position_covariance[4] = var;
-  fix.position_covariance[8] = (var * 4.0);  // vertical is roughly 2x worse
-  fix.position_covariance_type =
-    sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_APPROXIMATED;
+  // Prefer the receiver's measured 1-sigma errors from a recent GST sentence;
+  // fall back to a quality/HDOP heuristic when GST is unavailable or stale.
+  std::optional<NmeaGst> gst;
+  {
+    std::lock_guard<std::mutex> lk(state_mutex_);
+    if (last_gst_ &&
+      (now() - last_gst_time_).seconds() < kGstStaleSec)
+    {
+      gst = last_gst_;
+    }
+  }
+  if (gst) {
+    // GST reports lat (North), lon (East) and alt (Up) standard deviations.
+    fix.position_covariance[0] = gst->std_lon_m * gst->std_lon_m;  // East
+    fix.position_covariance[4] = gst->std_lat_m * gst->std_lat_m;  // North
+    fix.position_covariance[8] = gst->std_alt_m * gst->std_alt_m;  // Up
+    fix.position_covariance_type =
+      sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_DIAGONAL_KNOWN;
+  } else {
+    double sigma = quality_to_sigma_m(gga.quality) * std::max(0.5, gga.hdop);
+    double var = sigma * sigma;
+    fix.position_covariance[0] = var;
+    fix.position_covariance[4] = var;
+    fix.position_covariance[8] = (var * 4.0);  // vertical is roughly 2x worse
+    fix.position_covariance_type =
+      sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_APPROXIMATED;
+  }
 
   if (fix_pub_ && fix_pub_->is_activated()) {
     fix_pub_->publish(fix);
@@ -512,6 +543,11 @@ void Um982DriverNode::produce_diagnostics(diagnostic_updater::DiagnosticStatusWr
   stat.add("hdop", last_hdop_);
   if (last_correction_age_s_.has_value()) {
     stat.add("correction_age_s", *last_correction_age_s_);
+  }
+  if (last_gst_.has_value()) {
+    stat.add("std_lat_m", last_gst_->std_lat_m);
+    stat.add("std_lon_m", last_gst_->std_lon_m);
+    stat.add("std_alt_m", last_gst_->std_alt_m);
   }
   stat.add("rtcm_bytes_in", static_cast<int>(rtcm_bytes_in_));
   stat.add("sentences_in", static_cast<int>(sentences_in_));

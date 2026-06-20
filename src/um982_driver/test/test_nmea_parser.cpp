@@ -10,6 +10,7 @@
 using um982_driver::parse_gga;
 using um982_driver::parse_rmc;
 using um982_driver::parse_vtg;
+using um982_driver::parse_gst;
 using um982_driver::verify_nmea_checksum;
 using um982_driver::NmeaFixQuality;
 
@@ -103,4 +104,25 @@ TEST(NmeaParser, RejectsWrongSentenceType)
   auto s = with_checksum("GNVTG,123.4,T,121.0,M,10.0,N,18.52,K,A");
   EXPECT_FALSE(parse_gga(s).has_value());
   EXPECT_FALSE(parse_rmc(s).has_value());
+}
+
+TEST(NmeaParser, ParsesGstMeasuredStandardDeviations)
+{
+  // Reference example from the Unicore manual (Table 7-9 GST Data Structure):
+  // $GNGST,utc,rms,smjr,smnr,orient,lat_std,lon_std,alt_std
+  auto s = with_checksum("GNGST,054013.00,0.67,1.67,1.37,115.3800,1.432,1.620,3.399");
+  auto gst = parse_gst(s);
+  ASSERT_TRUE(gst.has_value());
+  EXPECT_EQ(gst->utc, "054013.00");
+  EXPECT_NEAR(gst->std_lat_m, 1.432, 1e-6);
+  EXPECT_NEAR(gst->std_lon_m, 1.620, 1e-6);
+  EXPECT_NEAR(gst->std_alt_m, 3.399, 1e-6);
+}
+
+TEST(NmeaParser, RejectsGstWrongTypeOrShort)
+{
+  EXPECT_FALSE(parse_gst(with_checksum("GNVTG,123.4,T,121.0,M,10.0,N,18.52,K,A"))
+      .has_value());
+  // Too few fields.
+  EXPECT_FALSE(parse_gst(with_checksum("GNGST,054013.00,0.67,1.67")).has_value());
 }
