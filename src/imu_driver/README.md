@@ -53,7 +53,7 @@ clockwise-positive heading) per Appendix D of the ICD.
 | `publish_orientation` | `true` | Publish the orientation quaternion. |
 | `publish_temperature` | `true` | Publish `~/temperature`. |
 | `query_device_info` | `true` | Send GetDevInfo/GetBIT on activation. |
-| `publish_every_n` | `20` | Publish 1 of every N parsed samples (decimation). `1` = every sample; `20` throttles a 2000 Hz device to ~100 Hz. The device is still read at full rate. |
+| `publish_every_n` | `20` | Block size for averaging decimation: publish the **mean** of every N parsed samples. `1` = every sample unchanged; `20` averages a 2000 Hz device down to ~100 Hz (noise ↓ ~√N, anti-aliased). The device is still read at full rate. |
 | `expected_rate_hz` | `2000.0` | Expected **device** rate for the diagnostics lower-bound check (checks `sample_rate_hz`, not the decimated `publish_rate_hz`). |
 | `orientation_covariance` | diag(0.0025, 0.0025, 100) | 9-element row-major. |
 | `angular_velocity_covariance` | diag(4e-4) | 9-element row-major. |
@@ -84,9 +84,14 @@ ros2 topic echo /diagnostics --once
 The device streams Calibrated HR much faster than a ground-robot EKF needs
 (this unit auto-streams 2000 Hz). Rather than reconfiguring the device, the
 driver **reads every frame at full rate** (so USW faults are caught promptly)
-but **publishes only 1 of every `publish_every_n`** on `~/data` / `~/temperature`.
-With `publish_every_n: 20` a 2000 Hz device yields ~100 Hz published. Diagnostics
-reports both `sample_rate_hz` (device) and `publish_rate_hz` (after decimation).
+and **publishes the mean of each block of `publish_every_n` samples** on
+`~/data` / `~/temperature`. Averaging the full-rate stream (instead of dropping
+N-1 of every N) lowers gyro/accel white noise by ~√N and anti-aliases the
+output. With `publish_every_n: 20` a 2000 Hz device yields ~100 Hz published.
+The block's USW is OR-accumulated so no fault bit is lost, and the orientation
+quaternion is taken from the latest sample in the block (quaternions are not
+linearly averaged). Diagnostics reports both `sample_rate_hz` (device) and
+`publish_rate_hz` (after decimation).
 
 ## Device data rate & baud — read before changing the rate in the GUI
 

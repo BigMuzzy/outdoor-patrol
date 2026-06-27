@@ -91,8 +91,9 @@ void ImuDriverNode::declare_parameters()
   publish_orientation_ = this->declare_parameter<bool>("publish_orientation", true);
   publish_temperature_ = this->declare_parameter<bool>("publish_temperature", true);
   query_device_info_ = this->declare_parameter<bool>("query_device_info", true);
-  // Publish one of every N parsed samples (decimation). N=1 publishes every
-  // sample; e.g. a 2000 Hz device stream with N=20 yields ~100 Hz on ~/data.
+  // Block size for averaging decimation: the mean of every N parsed samples is
+  // published on ~/data. N=1 publishes every sample unchanged; e.g. a 2000 Hz
+  // device stream with N=20 yields ~100 Hz averaged samples (noise down ~sqrt N).
   publish_every_n_ = this->declare_parameter<int64_t>("publish_every_n", 1);
   if (publish_every_n_ < 1) {
     RCLCPP_WARN(
@@ -186,6 +187,9 @@ ImuDriverNode::on_activate(const rclcpp_lifecycle::State & /*state*/)
     samples_at_last_diag_ = samples_total_;
   }
 
+  // Start each activation with an empty block so a partial block left over from
+  // a previous activation can't merge with fresh samples.
+  block_ = SampleBlock{};
   running_ = true;
   io_thread_ = std::thread(&ImuDriverNode::read_loop, this);
   RCLCPP_INFO(get_logger(), "IMU driver activated.");
@@ -389,11 +393,10 @@ void ImuDriverNode::handle_frame(const Frame & f)
       last_usw_ = d.usw;
       last_temperature_c_ = d.temperature_c;
     }
-    // Decimate: publish one of every publish_every_n parsed samples so a fast
-    // device stream (e.g. 2 kHz) is throttled to an EKF-friendly rate.
-    if (decimation_counter_++ % static_cast<uint64_t>(publish_every_n_) == 0) {
-      publish_imu(d);
-    }
+    // Average each block of publish_every_n samples and publish the mean, so a
+    // fast device stream (e.g. 2 kHz) is throttled to an EKF-friendly rate while
+    // still using every sample (lower noise + anti-alias vs. dropping N-1 of N).
+    accumulate_sample(d);
     return;
   }
   if (f.data_id == kDataIdDevInfo) {
@@ -425,6 +428,43 @@ void ImuDriverNode::handle_frame(const Frame & f)
       "Unhandled frame data_id=0x%02X (msg_type=%u, payload=%zu bytes); ignoring.",
       f.data_id, f.msg_type, f.payload.size());
   }
+}
+
+void ImuDriverNode::accumulate_sample(const CalibHrData & d)
+{
+  for (int i = 0; i < 3; ++i) {
+    block_.angular_velocity[i] += d.angular_velocity[i];
+    block_.linear_acceleration[i] += d.linear_acceleration[i];
+  }
+  block_.temperature_c += d.temperature_c;
+  block_.usw_raw |= d.usw.raw;  // keep every fault bit seen within the block
+  block_.last = d;              // latest orientation/counter for the block stamp
+  ++block_.count;
+
+  if (block_.count >= static_cast<uint64_t>(publish_every_n_)) {
+    publish_block();
+  }
+}
+
+void ImuDriverNode::publish_block()
+{
+  if (block_.count == 0) {
+    return;
+  }
+  // Start from the most recent sample so orientation (which cannot be linearly
+  // averaged) and the counter reflect the block's latest state, then overwrite
+  // the linearly-averageable channels with the block mean.
+  CalibHrData avg = block_.last;
+  const double inv = 1.0 / static_cast<double>(block_.count);
+  for (int i = 0; i < 3; ++i) {
+    avg.angular_velocity[i] = block_.angular_velocity[i] * inv;
+    avg.linear_acceleration[i] = block_.linear_acceleration[i] * inv;
+  }
+  avg.temperature_c = block_.temperature_c * inv;
+  avg.usw = decode_usw(block_.usw_raw);
+
+  publish_imu(avg);
+  block_ = SampleBlock{};
 }
 
 void ImuDriverNode::publish_imu(const CalibHrData & d)

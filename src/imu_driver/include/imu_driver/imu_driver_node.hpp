@@ -60,6 +60,11 @@ private:
 
   void read_loop();
   void handle_frame(const Frame & f);
+  /// Add one parsed sample to the current block; publishes the block mean once
+  /// `publish_every_n_` samples have accumulated.
+  void accumulate_sample(const CalibHrData & d);
+  /// Publish the mean of the current block and reset it.
+  void publish_block();
   void publish_imu(const CalibHrData & d);
 
   void produce_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
@@ -92,8 +97,22 @@ private:
   std::thread io_thread_;
   std::mutex write_mutex_;
   FrameParser parser_;
-  // Owned solely by the I/O thread; counts parsed CalibHR samples for decimation.
-  uint64_t decimation_counter_{0};
+  // Block-average decimation accumulator. Owned solely by the I/O thread: each
+  // parsed CalibHR sample is summed here, and once `count` reaches
+  // publish_every_n_ the mean is published and the block resets. Averaging
+  // (rather than dropping N-1 of every N samples) uses the full device rate to
+  // lower gyro/accel white noise by ~sqrt(N) and acts as a cheap anti-alias
+  // filter.
+  struct SampleBlock
+  {
+    double angular_velocity[3]{0.0, 0.0, 0.0};
+    double linear_acceleration[3]{0.0, 0.0, 0.0};
+    double temperature_c{0.0};
+    uint16_t usw_raw{0};   ///< OR-accumulated raw USW so no fault bit is lost.
+    uint64_t count{0};
+    CalibHrData last;      ///< Most recent sample (orientation, counter, etc.).
+  };
+  SampleBlock block_;
 
   // State snapshot for diagnostics (guarded by state_mutex_)
   std::mutex state_mutex_;

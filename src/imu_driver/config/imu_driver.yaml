@@ -33,14 +33,17 @@ imu_driver:
     # Send GetDevInfo / GetBIT once on activation; results appear in diagnostics.
     query_device_info: true
 
-    # Decimation: publish one of every N parsed samples on ~/data. The device
-    # streams Calibrated HR far faster than a ground-robot EKF needs (this unit
-    # auto-streams 2000 Hz), so throttle here instead of reconfiguring the
-    # device. N=20 at a 2000 Hz device stream -> ~100 Hz published. The device
-    # is still read at full rate (faults/USW are caught at the device rate);
-    # only the published Imu/Temperature messages are decimated. Set N=1 to
-    # publish every sample. See diagnostics: sample_rate_hz (device) vs
-    # publish_rate_hz (after decimation).
+    # Averaging decimation: publish the MEAN of every N parsed samples on
+    # ~/data. The device streams Calibrated HR far faster than a ground-robot
+    # EKF needs (this unit auto-streams 2000 Hz), so throttle here instead of
+    # reconfiguring the device. N=20 at a 2000 Hz device stream -> ~100 Hz
+    # published. Averaging the full-rate stream (rather than dropping N-1 of
+    # every N) lowers gyro/accel noise by ~sqrt(N) and anti-aliases the output.
+    # The device is still read at full rate (faults/USW caught at the device
+    # rate); the block USW is OR-accumulated so no fault bit is lost, and the
+    # orientation quaternion is taken from the latest sample in the block. Set
+    # N=1 to publish every sample unchanged. See diagnostics: sample_rate_hz
+    # (device) vs publish_rate_hz (after decimation).
     publish_every_n: 20
 
     # Expected DEVICE stream rate (Hz) for the diagnostics rate check only.
