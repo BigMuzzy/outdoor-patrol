@@ -6,15 +6,16 @@ Composes on top of the M1 local EKF (localization.launch.py):
 
   - local EKF       : wheel velocities -> `odom -> base_link` (smooth)
   - heading_to_imu  : UM982 dual-antenna heading -> /gnss/heading (Imu, yaw)
+  - confidence_gate : raw NavSatFix -> /gnss/fix_gated (inflate cov on
+                      degraded fix; drop NO_FIX)
   - navsat_transform: gated NavSatFix + heading -> /odometry/gps
   - global EKF      : wheel + GNSS position + heading -> `map -> odom`
 
-Not started here (run separately): the UM982 driver + NTRIP, and the
-confidence_gate (step 3). Point `fix_topic` at the gated fix once the gate
-lands; until then it defaults to the raw driver fix.
+Not started here (run separately): the UM982 driver + NTRIP. `fix_topic`
+defaults to the gated fix; override to the raw driver fix to bypass the gate.
 
 TBD until measured / decided: the heading `yaw_offset` (heading_to_imu params)
-and the map datum (config/navsat.yaml) — integration plan items 2/3/4.
+- integration plan items 2/3. Datum is auto-on-first-fix (config/navsat.yaml).
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -37,10 +38,10 @@ def generate_launch_description() -> LaunchDescription:
     )
     fix_topic_arg = DeclareLaunchArgument(
         'fix_topic',
-        default_value='/um982_driver/fix',
-        description='NavSatFix input for navsat_transform. Point at the '
-                    'confidence_gate output (e.g. /gnss/fix_gated) once '
-                    'step 3 lands.',
+        default_value='/gnss/fix_gated',
+        description='NavSatFix input for navsat_transform. Defaults to the '
+                    'confidence_gate output; set to /um982_driver/fix to '
+                    'bypass the gate.',
     )
 
     # M1 local EKF (odom -> base_link), reused unchanged.
@@ -57,6 +58,18 @@ def generate_launch_description() -> LaunchDescription:
         name='heading_to_imu',
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
+    )
+
+    # Inflate covariance on a degraded fix; publish /gnss/fix_gated.
+    confidence_gate = Node(
+        package='outdoor_patrol_loc',
+        executable='confidence_gate',
+        name='confidence_gate',
+        output='screen',
+        parameters=[
+            PathJoinSubstitution([pkg, 'config', 'confidence_gate.yaml']),
+            {'use_sim_time': use_sim_time},
+        ],
     )
 
     # GNSS <-> map-frame bridge.
@@ -97,6 +110,7 @@ def generate_launch_description() -> LaunchDescription:
         fix_topic_arg,
         local_ekf,
         heading_to_imu,
+        confidence_gate,
         navsat,
         global_ekf,
     ])

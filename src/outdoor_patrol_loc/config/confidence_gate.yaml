@@ -1,0 +1,15 @@
+# GNSS confidence gate (interim ADR-012 / ADR-001 — RTK-status + HDOP subset).
+#
+# Gates the raw UM982 fix on its reported horizontal 1-sigma (the driver
+# already folds RTK fix quality + HDOP into position_covariance). Degraded
+# fixes are republished with inflated covariance so the global EKF de-weights
+# GNSS smoothly (no map jump); NO_FIX is dropped. Output -> /gnss/fix_gated,
+# which navsat_transform consumes.
+confidence_gate:
+  ros__parameters:
+    input_topic: /um982_driver/fix
+    output_topic: /gnss/fix_gated
+    # ~5 cm: passes RTK-Fixed (cm-class) only; Float/DGPS/single get inflated.
+    max_horizontal_sigma_m: 0.05
+    covariance_inflation: 1000.0
+    reject_on_no_fix: true
