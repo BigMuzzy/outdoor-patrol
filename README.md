@@ -112,6 +112,40 @@ Acceptance: joystick-drive a taped 2 m × 2 m square, plot
 `/odometry/filtered` in RViz (closure < 0.3 m), confirm
 `tf2_echo odom base_link` is smooth, and `ros2 topic hz /odom` ≥ 20 Hz.
 
+### GNSS global localization (interim, ADR-012)
+
+Brings up globally-referenced localization (`map → odom → base_link`) by
+fusing wheel odometry with RTK GNSS, using the UM982's **dual-antenna heading
+in place of an IMU**
+([ADR-012](src/robot-research/notes/outdoor-patrol/recipe/decisions.md)). This
+pulls GNSS ahead of the IMU (M2) and LIO (M4); when those land, `map → odom`
+ownership moves to LIO. **Localization only** — it does not authorize
+autonomous motion (the M3 safety brake gates that).
+
+One launch starts the whole stack: micro-ROS agent + `robot_state_publisher`,
+the UM982 driver + NTRIP (RTK), the dual-EKF + `navsat_transform` +
+`confidence_gate`, and RViz (fixed frame = `map`).
+
+```bash
+# Terminal 1: full stack. Point ntrip_params_file at your real caster creds.
+ros2 launch outdoor_patrol_bringup gnss_localization.launch.py \
+  serial_dev:=/dev/ttyACM0 \
+  ntrip_params_file:=$(pwd)/ntrip.yaml
+
+# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+Before a real run, set the heading `yaw_offset` in
+[`heading_to_imu`](src/outdoor_patrol_loc/src/heading_to_imu.cpp) from the
+measured antenna-baseline mount angle — until then the `map` orientation is
+unaligned. The datum is auto-set on the first RTK fix, so **start near the
+dock** to keep coordinates small.
+
+Acceptance: at the dock origin, drive a 20 m line and confirm the EKF pose
+tracks GNSS within 0.3 m; cover the antenna mid-drive and confirm the gate
+inflates covariance (no `map` jump) and recovers cleanly.
+
 ---
 
 ## How to use this template
