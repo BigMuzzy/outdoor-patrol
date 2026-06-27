@@ -2,25 +2,30 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="outdoor_patrol">
 
   <!--
-    Minimal diff-drive URDF for M0 (teleop baseline).
-    Frames follow REP-105: base_footprint (ground) -> base_link (chassis).
-    All joints are FIXED in M0 because there is no joint-state source yet;
-    M1 switches wheel joints to 'continuous' when odometry / ros2_control
-    feeds joint_states.
+    Diff-drive URDF. Geometry and module mount poses are read from
+    config/chassis.yaml (single source of truth) — adjust dimensions and
+    sensor placements THERE, not in this file.
+
+    Frames follow REP-105: base_footprint (ground) -> base_link (chassis),
+    with module frames (gnss_link, …) hung off base_link from the yaml
+    `modules:` section.
+
+    Wheel joints are FIXED until a joint-state source exists (M1+ switches
+    them to 'continuous' when odometry / ros2_control feeds joint_states).
   -->
 
-  <xacro:arg name="wheel_radius"     default="0.080"/>
-  <xacro:arg name="wheel_separation" default="0.600"/>
-  <xacro:arg name="base_height"      default="0.150"/>
+  <!-- ── Config: single source of truth (config/chassis.yaml) ─────── -->
+  <xacro:property name="cfg"
+      value="${xacro.load_yaml('$(find outdoor_patrol_bringup)/config/chassis.yaml')}"/>
+  <xacro:property name="ch" value="${cfg['chassis']}"/>
 
-  <xacro:property name="wheel_radius"     value="$(arg wheel_radius)"/>
-  <xacro:property name="wheel_separation" value="$(arg wheel_separation)"/>
-  <xacro:property name="base_height"      value="$(arg base_height)"/>
-
-  <xacro:property name="wheel_width" value="0.060"/>
-  <xacro:property name="body_length" value="0.700"/>
-  <xacro:property name="body_width"  value="0.500"/>
-  <xacro:property name="body_height" value="0.200"/>
+  <xacro:property name="wheel_radius"     value="${ch['wheel_radius']}"/>
+  <xacro:property name="wheel_separation" value="${ch['wheel_separation']}"/>
+  <xacro:property name="base_height"      value="${ch['base_height']}"/>
+  <xacro:property name="wheel_width"      value="${ch['wheel_width']}"/>
+  <xacro:property name="body_length"      value="${ch['body_length']}"/>
+  <xacro:property name="body_width"       value="${ch['body_width']}"/>
+  <xacro:property name="body_height"      value="${ch['body_height']}"/>
 
   <!-- base_footprint sits on the ground directly below base_link. -->
   <link name="base_footprint"/>
@@ -43,6 +48,7 @@
     <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
   </joint>
 
+  <!-- ── Wheels ───────────────────────────────────────────────────── -->
   <xacro:macro name="wheel" params="prefix y_offset">
     <link name="${prefix}_wheel_link">
       <visual>
@@ -67,5 +73,23 @@
 
   <xacro:wheel prefix="left"  y_offset="${ wheel_separation/2}"/>
   <xacro:wheel prefix="right" y_offset="${-wheel_separation/2}"/>
+
+  <!-- ── Module mount frames (from config/chassis.yaml `modules:`) ─── -->
+  <!-- Each becomes <link> + fixed <joint> at the yaml-supplied pose.
+       Add a sensor = add a `modules:` entry + one module_frame call. -->
+  <xacro:macro name="module_frame" params="name parent xyz rpy">
+    <link name="${name}"/>
+    <joint name="${parent}_to_${name}" type="fixed">
+      <parent link="${parent}"/>
+      <child  link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:property name="modules" value="${cfg['modules']}"/>
+
+  <xacro:property name="gnss" value="${modules['gnss_link']}"/>
+  <xacro:module_frame name="gnss_link" parent="${gnss['parent']}"
+                      xyz="${gnss['xyz']}" rpy="${gnss['rpy']}"/>
 
 </robot>

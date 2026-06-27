@@ -1,20 +1,40 @@
-# Chassis geometry and speed limits — single source of truth for M0+.
+# Chassis geometry, module mounts, and speed limits — single source of
+# truth for M0+. Read directly by the URDF
+# (urdf/outdoor_patrol.urdf.xacro via xacro.load_yaml) so geometry lives in
+# exactly one place.
 #
-# Values mirror the ESP32-S3 firmware constants in
+# Wheel radius / separation mirror the ESP32-S3 firmware constants in
 # src/esp32-s3-uros-controller/firmware/main/diff_drive.h
-# (WHEEL_DIAMETER_M = 0.160, TRACK_WIDTH_M = 0.600,
+# (WHEEL_DIAMETER_M = 0.17068 -> radius 0.08534, TRACK_WIDTH_M = 0.52123,
 #  MAX_MANUAL_SPEED_MS = 1.0, MAX_MANUAL_ANGVEL = 0.67).
 # Keep this file and diff_drive.h in lock-step.
 chassis:
   # Wheel radius in meters (= WHEEL_DIAMETER_M / 2 in firmware).
-  wheel_radius: 0.080
+  wheel_radius: 0.08534
   # Distance between left and right wheel centers, meters
   # (= TRACK_WIDTH_M in firmware).
-  wheel_separation: 0.600
-  # Height of base_link origin above the ground, meters. Used only for
-  # the URDF base_footprint -> base_link offset.
+  wheel_separation: 0.52123
+  # Height of base_link origin above the ground, meters. Used for the URDF
+  # base_footprint -> base_link offset (and the GNSS lever-arm Z reference).
   base_height: 0.150
+  # Chassis visual box — cosmetic (RViz only).
+  body_length: 0.700
+  body_width: 0.500
+  body_height: 0.200
+  wheel_width: 0.060
   # Teleop speed clamps — mirror firmware MAX_MANUAL_* limits so that
   # PC-side teleop never asks for more than the controller will allow.
   max_linear_velocity: 1.0    # m/s   (MAX_MANUAL_SPEED_MS)
   max_angular_velocity: 0.67  # rad/s (MAX_MANUAL_ANGVEL)
+
+# Sensor / module mount frames. Each entry becomes a URDF link + fixed
+# joint at the given pose in its parent frame (REP-103: X fwd, Y left,
+# Z up). xyz/rpy are space-separated strings so they drop straight into
+# <origin>. Re-survey a module -> edit its pose here; no URDF edit needed.
+modules:
+  # GNSS primary-antenna (ANT1) phase center relative to base_link, which
+  # sits base_height above the drive-axle midpoint on the centerline.
+  # TODO: replace xyz with the measured lever arm (forward, left, up).
+  gnss_link: { parent: base_link, xyz: "0.0 0.0 0.30", rpy: "0 0 0" }  # TBD: measured lever arm
+  # imu_link:   { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M2
+  # lidar_link: { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M3
