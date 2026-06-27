@@ -1,0 +1,38 @@
+# navsat_transform_node — GNSS <-> map-frame bridge (interim ADR-012).
+#
+# Consumes the gated NavSatFix + the dual-antenna heading (as an Imu) + the
+# global EKF's filtered odometry, and republishes the fix as map-frame
+# odometry (/odometry/gps) for the global EKF (config/ekf_global.yaml) to
+# fuse. No IMU yet -> the dual-antenna heading provides the world
+# orientation (use_odometry_yaw stays false).
+navsat_transform:
+  ros__parameters:
+    frequency: 30.0
+    delay: 0.0
+
+    # Dual-antenna heading is true-north referenced -> no magnetic
+    # declination correction.
+    magnetic_declination_radians: 0.0
+
+    # TBD (integration plan items 2/3): residual yaw correction. The
+    # heading_to_imu adapter already maps the receiver's heading convention
+    # + antenna-baseline mount angle into a REP-103 yaw, so keep this 0.0
+    # unless a measured bias remains after that.
+    yaw_offset: 0.0
+
+    zero_altitude: true
+    broadcast_utm_transform: false
+    publish_filtered_gps: false
+
+    # We feed an explicit heading Imu (/gnss/heading), not the odometry yaw.
+    use_odometry_yaw: false
+
+    # Datum / map origin (integration plan item 4): DECIDED — auto-datum on
+    # the first valid fix (wait_for_datum: false, no `datum` set). The map
+    # origin lands wherever the robot first gets a fix, so start near the dock
+    # to keep coordinates small (OQ-006). NOTE: this origin is NOT stable
+    # across restarts; switch to a FIXED per-site datum (wait_for_datum: true
+    # + uncomment `datum` [lat, lon, yaw_rad]) when persistent maps / saved
+    # waypoints arrive (M6+).
+    wait_for_datum: false
+    # datum: [47.5440, -121.8810, 0.0]   # fixed per-site dock origin (later)

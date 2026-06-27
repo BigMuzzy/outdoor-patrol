@@ -19,10 +19,14 @@ setup(
     zip_safe=True,
     maintainer='Outdoor Patrol Team',
     maintainer_email='dev@example.com',
-    description='M1 single-input EKF localization for the outdoor patrol robot.',
+    description='Localization for the outdoor patrol robot: M1 local EKF '
+                '(odom->base_link) plus the interim ADR-012 global EKF + '
+                'navsat_transform + dual-antenna heading (map->odom).',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'heading_to_imu = outdoor_patrol_loc.heading_to_imu:main',
+        ],
     },
 )

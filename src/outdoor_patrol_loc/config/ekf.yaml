@@ -18,7 +18,11 @@ ekf_filter_node:
   ros__parameters:
     frequency: 30.0
     sensor_timeout: 0.1
-    two_d_mode: true              # zeroes z, roll, pitch and their rates
+    # FLAT-GROUND BENCH ONLY. Zeros z, roll, pitch + their rates. Correct for
+    # the M1/M2 flat-ground tests, but it FLATTENS slopes — set to false before
+    # M7 (elevation_mapping / traversability need a true 3D base pose) and
+    # before GNSS altitude matters on graded sites. See implementation-plan M7.
+    two_d_mode: true
     publish_tf: true
     publish_acceleration: false
 

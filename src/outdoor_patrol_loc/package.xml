@@ -4,9 +4,11 @@
   <name>outdoor_patrol_loc</name>
   <version>0.0.1</version>
   <description>
-    M1 localization for the outdoor patrol robot. Single-input
-    robot_localization EKF that consumes the chassis wheel odometry and
-    owns the REP-105 odom -> base_link transform. Extended with IMU at M2.
+    Localization for the outdoor patrol robot. The M1 local
+    robot_localization EKF consumes the chassis wheel odometry and owns the
+    REP-105 odom -> base_link transform (extended with IMU at M2). The
+    interim ADR-012 global EKF + navsat_transform + dual-antenna heading
+    adapter own map -> odom.
   </description>
   <maintainer email="dev@example.com">Outdoor Patrol Team</maintainer>
   <license>Apache-2.0</license>
@@ -14,6 +16,9 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>robot_localization</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

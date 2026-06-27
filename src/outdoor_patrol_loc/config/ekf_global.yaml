@@ -1,0 +1,72 @@
+# Global (map-frame) EKF — robot_localization ekf_node.
+#
+# Interim ADR-012 dual-EKF: this node OWNS `map -> odom` by fusing the
+# chassis wheel velocities, the gated GNSS position (via
+# navsat_transform_node -> /odometry/gps), and the dual-antenna heading
+# (via heading_to_imu -> /gnss/heading) as the absolute-yaw source in lieu
+# of an IMU.
+#
+# The LOCAL EKF (config/ekf.yaml) still owns the smooth, continuous
+# `odom -> base_link` from wheel velocities only; absolute GNSS corrections
+# live HERE so they never make `odom -> base_link` jump (REP-105).
+#
+# SUNSET (ADR-012, amended 2026-06-27): the dual-EKF is PERMANENT. When LIO
+# (M4) lands it feeds THIS global EKF as an odometry input (this node keeps
+# sole ownership of `map -> odom`; LIO is NOT a second writer) and GNSS
+# demotes to a gated correction; when the IMU (M2) lands, add it as imu1 here.
+ekf_global:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true              # zeroes z, roll, pitch and their rates
+    publish_tf: true
+    publish_acceleration: false
+
+    # REP-105 frames. world_frame = map -> this node broadcasts map -> odom
+    # (it looks up odom -> base_link from the local EKF's TF).
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: map
+
+    # --- odom0: chassis wheel odometry — body velocities (vx, vyaw) ---------
+    # Same continuous source the local EKF integrates; gives the global
+    # filter smooth dead-reckoning between GNSS updates.
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_queue_size: 10
+    odom0_differential: false
+    odom0_relative: false
+    odom0_nodelay: false
+
+    # --- odom1: GNSS position in the map frame (from navsat_transform) ------
+    # navsat republishes the gated NavSatFix as map-frame odometry; fuse the
+    # absolute x, y only (z zeroed by two_d_mode).
+    odom1: /odometry/gps
+    odom1_config: [true,  true,  false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    odom1_queue_size: 10
+    odom1_differential: false
+    odom1_relative: false
+    odom1_nodelay: false
+
+    # --- imu0: dual-antenna heading as absolute yaw (heading_to_imu) --------
+    # The only absolute-orientation source until the M2 IMU. Yaw only; the
+    # adapter marks angular velocity / acceleration unavailable.
+    imu0: /gnss/heading
+    imu0_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: false
