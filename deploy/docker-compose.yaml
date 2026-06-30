@@ -57,6 +57,9 @@ services:
     # GNSS global-localization bringup (ADR-012): micro-ROS agent +
     # robot_state_publisher + UM982 RTK GNSS/NTRIP + dual-EKF + heading
     # adapter. RViz runs on the dev box instead (use_rviz:=false here).
+    # RTK corrections: drop a real caster ntrip.yaml in ./data (-> /data)
+    # and start with `NTRIP_PARAMS=/data/ntrip.yaml docker compose up -d`.
+    # Unset -> the in-image example (standalone fix, no live caster).
     # Keyboard teleop still works in a second shell:
     #   docker exec -it outdoor-patrol \
     #     ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -68,3 +71,4 @@ services:
       - "serial_dev:=${SERIAL_DEV:-/dev/ttyACM0}"
       - "serial_baud:=${SERIAL_BAUD:-115200}"
       - "use_rviz:=false"
+      - "ntrip_params_file:=${NTRIP_PARAMS:-/opt/outdoor-patrol/install/share/ntrip_client/config/ntrip.yaml.example}"
