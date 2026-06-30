@@ -9,11 +9,13 @@
 		},
 		"options": ["--pull"]
 	},
-	// Runs on the HOST before the container is created. Installs the udev
-	// rule that creates the stable /dev/esp32-chassis symlink so the
-	// --device passthrough below works (udev/dev are host-managed; this
-	// cannot be done in the Dockerfile). Idempotent; may prompt for sudo.
-	"initializeCommand": "${localWorkspaceFolder}/.devcontainer/install-udev-rules.sh",
+	// Runs on the HOST before the container is created. (1) Ensures the
+	// host's ~/.ssh exists with safe perms so the bind mount below can
+	// persist SSH keys/config across rebuilds. (2) Installs the udev rule
+	// that creates the stable /dev/esp32-chassis symlink so the --device
+	// passthrough below works (udev/dev are host-managed; this cannot be
+	// done in the Dockerfile). Idempotent; may prompt for sudo.
+	"initializeCommand": "mkdir -p \"${localEnv:HOME}/.ssh\" && chmod 700 \"${localEnv:HOME}/.ssh\"; ${localWorkspaceFolder}/.devcontainer/install-udev-rules.sh",
 	// Runs INSIDE the container once after creation. Resolves the ROS
 	// dependencies declared in each package.xml (e.g. nmea_msgs, rtcm_msgs)
 	// via rosdep so they survive image rebuilds — mirrors deploy/Dockerfile
@@ -76,6 +78,13 @@
 		"LIBGL_ALWAYS_SOFTWARE": "1" // Needed for software rendering of opengl
 	},
 	"remoteUser": "ros",
+	// Persist SSH keys/config across container rebuilds by sharing the host's
+	// ~/.ssh (created by initializeCommand if absent). This way `ssh <robot>`
+	// keeps working after "Dev Containers: Rebuild Container", and the same
+	// identity is shared with the host (e.g. VS Code Remote-SSH to the Pi).
+	"mounts": [
+		"source=${localEnv:HOME}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached"
+	],
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
 		"vscode": {

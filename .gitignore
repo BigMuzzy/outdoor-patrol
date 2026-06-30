@@ -1,7 +1,7 @@
-build/*
-install/*
-log/*
-site/*
+**/build/
+**/install/
+**/log/
+**/site/
 
 # micro-ROS agent sibling workspace, materialized by
 # scripts/setup-uros-agent.sh via `ros2 run micro_ros_setup create_agent_ws.sh`.
@@ -13,3 +13,4 @@ src/esp32-s3-uros-controller.worktrees
 # NTRIP caster credentials — copy ntrip.yaml.example to ntrip.yaml and fill in.
 # Never commit real credentials.
 **/ntrip.yaml
+**/__pycache__/

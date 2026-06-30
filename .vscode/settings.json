@@ -72,4 +72,5 @@
     ],
     "ament-task-provider.envSetup": "source /opt/ros/${env:ROS_DISTRO}/setup.bash",
     "ROS2.distro": "${env:ROS_DISTRO}",
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true,
 }
