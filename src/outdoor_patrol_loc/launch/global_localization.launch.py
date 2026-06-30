@@ -57,7 +57,10 @@ def generate_launch_description() -> LaunchDescription:
         executable='heading_to_imu',
         name='heading_to_imu',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
+        parameters=[
+            PathJoinSubstitution([pkg, 'config', 'heading_to_imu.yaml']),
+            {'use_sim_time': use_sim_time},
+        ],
     )
 
     # Inflate covariance on a degraded fix; publish /gnss/fix_gated.

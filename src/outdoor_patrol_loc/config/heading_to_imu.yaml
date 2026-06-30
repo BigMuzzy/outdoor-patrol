@@ -1,0 +1,21 @@
+# heading_to_imu — UM982 dual-antenna heading -> yaw-only Imu.
+#
+# This robot's antennas are mounted LATERALLY: ANT1 (primary, position
+# reference) on the RIGHT, ANT2 on the LEFT, 0.84 m apart. So the receiver's
+# reported baseline heading (ANT1 -> ANT2) points +Y (left), 90 deg CCW of
+# the robot's forward axis. The UM982 driver already outputs the ENU yaw of
+# that baseline (yaw = pi/2 - compass_heading), so:
+#
+#     yaw_forward = yaw_baseline - pi/2   ->   yaw_offset = -pi/2
+#
+# FINALIZE empirically at first bringup: point the robot's nose along a known
+# heading, compare the EKF/`/gnss/heading` yaw to truth, and adjust. If it is
+# ~180 deg off, ANT1/ANT2 are wired opposite to assumed -> use +pi/2 instead.
+heading_to_imu:
+  ros__parameters:
+    input_topic: /um982_driver/heading
+    output_topic: /gnss/heading
+    frame_id: base_link
+    yaw_offset: -1.5707963267948966   # -pi/2 (lateral baseline, ANT2 left)
+    invert: false
+    yaw_stddev_deg: 1.0

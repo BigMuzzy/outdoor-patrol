@@ -34,7 +34,10 @@ chassis:
 modules:
   # GNSS primary-antenna (ANT1) phase center relative to base_link, which
   # sits base_height above the drive-axle midpoint on the centerline.
-  # TODO: replace xyz with the measured lever arm (forward, left, up).
-  gnss_link: { parent: base_link, xyz: "0.0 0.0 0.30", rpy: "0 0 0" }  # TBD: measured lever arm
+  # Measured 2026-06-30: ANT1 0.28 m forward, 0.42 m RIGHT of centerline,
+  # 0.33 m above ground (z = 0.33 - base_height 0.15 = 0.18). Antennas are
+  # mounted laterally (ANT2 0.42 m LEFT), 0.84 m baseline -> the 90 deg yaw
+  # offset lives in outdoor_patrol_loc config/heading_to_imu.yaml.
+  gnss_link: { parent: base_link, xyz: "0.28 -0.42 0.18", rpy: "0 0 0" }
   # imu_link:   { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M2
   # lidar_link: { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M3
