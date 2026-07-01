@@ -25,6 +25,7 @@ doc/eng/wiki/
 ├── ros2/                     ← launch, RMW, rclpy/rclcpp gotchas
 ├── micro_ros/                ← agent, transports, firmware bridge
 ├── hardware/                 ← ESP32, motors, sensors, USB enumeration
+├── gnss/                     ← RTK, NTRIP, heading, fix quality
 ├── deployment/               ← Docker, compose, Pi bringup, systemd
 ├── devcontainer/             ← VS Code dev container quirks
 └── build/                    ← colcon, rosdep, CMake, submodules
@@ -71,3 +72,6 @@ Other articles, ADRs, commits.
 
 ### deployment
 - [pi-container-races-wifi-at-boot.md](deployment/pi-container-races-wifi-at-boot.md)
+
+### gnss
+- [rtk-fix-hard-to-hold-while-moving.md](gnss/rtk-fix-hard-to-hold-while-moving.md)
