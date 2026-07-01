@@ -13,4 +13,9 @@ ntrip_client:
     gga_period_s: 10.0
     reconnect_backoff_s_min: 1.0
     reconnect_backoff_s_max: 30.0
+    # Force a reconnect if no RTCM arrives for this many seconds while the
+    # socket is still open (stalled / half-open VRS). 0 disables.
+    rtcm_timeout_s: 5.0
+    # Bound each TCP connect attempt so a dead network fails fast. 0 = OS default.
+    connect_timeout_s: 5.0
     frame_id: gnss_link

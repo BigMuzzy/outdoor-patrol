@@ -135,6 +135,11 @@ public:
     gga_period_s_ = declare_parameter<double>("gga_period_s", 10.0);
     reconnect_min_s_ = declare_parameter<double>("reconnect_backoff_s_min", 1.0);
     reconnect_max_s_ = declare_parameter<double>("reconnect_backoff_s_max", 30.0);
+    // Stall watchdog: force a reconnect if no RTCM frame arrives for this
+    // long while the socket is still "open" (half-open / idle VRS). 0 disables.
+    rtcm_timeout_s_ = declare_parameter<double>("rtcm_timeout_s", 5.0);
+    // Bound each TCP connect attempt so a dead network fails fast (0 = OS default).
+    connect_timeout_s_ = declare_parameter<double>("connect_timeout_s", 5.0);
     frame_id_ = declare_parameter<std::string>("frame_id", "gnss_link");
 
     if (host_.empty() || mountpoint_.empty()) {
@@ -172,6 +177,12 @@ public:
   }
 
 private:
+  static int64_t steady_ns()
+  {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  }
+
   void publish_frame(const std::vector<uint8_t> & frame)
   {
     rtcm_msgs::msg::Message msg;
@@ -179,6 +190,7 @@ private:
     msg.header.frame_id = frame_id_;
     msg.message.assign(frame.begin(), frame.end());
     rtcm_pub_->publish(msg);
+    last_frame_ns_.store(steady_ns(), std::memory_order_relaxed);
   }
 
   void interruptible_sleep(double seconds)
@@ -366,7 +378,7 @@ private:
     std::string err;
     RCLCPP_INFO(get_logger(), "NTRIP v%s connecting to %s:%d/%s",
       version.c_str(), host_.c_str(), port_, mountpoint_.c_str());
-    const int fd = tcp_connect(host_, port_, &err);
+    const int fd = tcp_connect(host_, port_, &err, connect_timeout_s_);
     if (fd < 0) {
       RCLCPP_WARN(get_logger(), "Connect failed: %s", err.c_str());
       return false;
@@ -396,6 +408,8 @@ private:
     auto last_gga_send = std::chrono::steady_clock::now();
     bool streamed_any = false;
     const std::size_t before = framer_.frames_emitted();
+    // Arm the stall watchdog: treat the stream as live as of now.
+    last_frame_ns_.store(steady_ns(), std::memory_order_relaxed);
 
     // Spawn a tiny helper thread for the body read so we can interleave
     // GGA uploads on the main session thread.
@@ -411,6 +425,20 @@ private:
 
     while (running_ && !body_done) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      // Stall watchdog: if no RTCM has arrived for rtcm_timeout_s_, shut the
+      // socket so the reader's blocking recv() returns, ending this session so
+      // the outer loop reconnects (guards against a half-open / idle stream).
+      if (rtcm_timeout_s_ > 0.0) {
+        const double idle_s =
+          (steady_ns() - last_frame_ns_.load(std::memory_order_relaxed)) / 1e9;
+        if (idle_s >= rtcm_timeout_s_) {
+          RCLCPP_WARN(get_logger(),
+            "No RTCM for %.1fs; forcing reconnect (stalled stream).", idle_s);
+          const int fd_now = sock_fd_.load();
+          if (fd_now >= 0) {::shutdown(fd_now, SHUT_RDWR);}
+          break;
+        }
+      }
       if (send_gga_ && gga_period_s_ > 0.0) {
         const auto now_t = std::chrono::steady_clock::now();
         const double elapsed =
@@ -485,6 +513,8 @@ private:
   double gga_period_s_{10.0};
   double reconnect_min_s_{1.0};
   double reconnect_max_s_{30.0};
+  double rtcm_timeout_s_{5.0};
+  double connect_timeout_s_{5.0};
 
   // Runtime
   std::mutex gga_mutex_;
@@ -494,6 +524,7 @@ private:
   rclcpp::Subscription<nmea_msgs::msg::Sentence>::SharedPtr gga_sub_;
   std::atomic<bool> running_{false};
   std::atomic<int> sock_fd_{-1};
+  std::atomic<int64_t> last_frame_ns_{0};
   std::thread io_thread_;
 };
 

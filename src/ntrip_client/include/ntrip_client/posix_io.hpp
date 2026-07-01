@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -70,8 +71,12 @@ private:
 
 /// Connect to host:port over TCP. Returns a connected fd or -1 on failure
 /// (errno set). `err_out` receives a human-readable error string when
-/// non-null.
-inline int tcp_connect(const std::string & host, int port, std::string * err_out = nullptr)
+/// non-null. `connect_timeout_s` bounds the connect via a non-blocking
+/// connect + poll() so a dead network fails fast instead of blocking for the
+/// full OS SYN timeout (<= 0 keeps the OS default blocking behaviour).
+inline int tcp_connect(
+  const std::string & host, int port, std::string * err_out = nullptr,
+  double connect_timeout_s = 5.0)
 {
   struct addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
@@ -89,7 +94,38 @@ inline int tcp_connect(const std::string & host, int port, std::string * err_out
   for (auto * ai = res; ai != nullptr; ai = ai->ai_next) {
     fd = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (fd < 0) {continue;}
-    if (::connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) {
+
+    if (connect_timeout_s <= 0.0) {
+      // Blocking connect (OS default timeout).
+      if (::connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) {break;}
+      ::close(fd);
+      fd = -1;
+      continue;
+    }
+
+    // Non-blocking connect bounded by poll().
+    const int flags = ::fcntl(fd, F_GETFL, 0);
+    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    int rc = ::connect(fd, ai->ai_addr, ai->ai_addrlen);
+    if (rc < 0 && errno == EINPROGRESS) {
+      struct pollfd pfd{fd, POLLOUT, 0};
+      const int pr = ::poll(&pfd, 1, static_cast<int>(connect_timeout_s * 1000.0));
+      if (pr > 0 && (pfd.revents & POLLOUT)) {
+        int soerr = 0;
+        socklen_t len = sizeof(soerr);
+        if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &len) == 0 && soerr == 0) {
+          rc = 0;
+        } else {
+          errno = soerr != 0 ? soerr : ETIMEDOUT;
+          rc = -1;
+        }
+      } else {
+        if (pr == 0) {errno = ETIMEDOUT;}
+        rc = -1;
+      }
+    }
+    if (rc == 0) {
+      ::fcntl(fd, F_SETFL, flags);  // restore blocking mode
       break;
     }
     ::close(fd);
