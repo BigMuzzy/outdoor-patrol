@@ -17,6 +17,8 @@
   <exec_depend>xacro</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>rviz2</exec_depend>
+  <!-- Satellite/aerial basemap under the robot in gnss.rviz (host RViz). -->
+  <exec_depend>rviz_satellite</exec_depend>
   <exec_depend>teleop_twist_keyboard</exec_depend>
   <!-- M1: localization.launch.py is included by odometry.launch.py. -->
   <exec_depend>outdoor_patrol_loc</exec_depend>

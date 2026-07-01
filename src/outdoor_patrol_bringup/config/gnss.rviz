@@ -12,6 +12,19 @@ Visualization Manager:
       Plane: XY
       Cell Size: 1
       Plane Cell Count: 40
+    # Satellite/aerial imagery under the robot (rviz_satellite). Georeferenced
+    # in the ENU "map" frame (navsat_transform datum). Tiles: Esri World
+    # Imagery (free, attribution required). Requires network access.
+    - Class: rviz_satellite/AerialMap
+      Enabled: true
+      Name: AerialMap
+      Topic: /um982_driver/fix
+      Object URI: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
+      Map Frame: map
+      Zoom: 18
+      Blocks: 6
+      Alpha: 0.85
+      Draw Behind: true
     - Class: rviz_default_plugins/TF
       Enabled: true
       Name: TF
