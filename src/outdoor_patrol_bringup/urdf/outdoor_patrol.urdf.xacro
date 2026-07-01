@@ -6,9 +6,10 @@
     config/chassis.yaml (single source of truth) — adjust dimensions and
     sensor placements THERE, not in this file.
 
-    Frames follow REP-105: base_footprint (ground) -> base_link (chassis),
-    with module frames (gnss_link, …) hung off base_link from the yaml
-    `modules:` section.
+    Frames follow REP-105: base_link (chassis) is the estimated body frame
+    (the EKFs publish odom -> base_link, matching the wheel-odom child frame),
+    with base_footprint as its ground projection hung below it, and module
+    frames (gnss_link, …) hung off base_link from the yaml `modules:` section.
 
     Wheel joints are FIXED until a joint-state source exists (M1+ switches
     them to 'continuous' when odometry / ros2_control feeds joint_states).
@@ -42,10 +43,10 @@
     </visual>
   </link>
 
-  <joint name="base_footprint_to_base_link" type="fixed">
-    <parent link="base_footprint"/>
-    <child  link="base_link"/>
-    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
+  <joint name="base_link_to_base_footprint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="base_footprint"/>
+    <origin xyz="0 0 ${-base_height}" rpy="0 0 0"/>
   </joint>
 
   <!-- ── Wheels ───────────────────────────────────────────────────── -->
