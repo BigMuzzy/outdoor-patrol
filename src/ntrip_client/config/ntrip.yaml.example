@@ -10,6 +10,10 @@ ntrip_client:
     ntrip_version: auto            # 1 | 2 | auto
     user_agent: "ntrip_client/0.0.1 ROS2"
     send_gga: true
+    # VRS casters need the client position to start streaming. The first GGA is
+    # uploaded immediately on connect; this is the period between subsequent
+    # uploads. Keep ~10s for VRS (a very short period makes some casters
+    # re-anchor the virtual base and never fix). Safe to leave < rtcm_timeout_s.
     gga_period_s: 10.0
     reconnect_backoff_s_min: 1.0
     reconnect_backoff_s_max: 30.0

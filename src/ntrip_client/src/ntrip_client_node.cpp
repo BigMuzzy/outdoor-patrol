@@ -405,7 +405,15 @@ private:
       kind.c_str(), chunked ? "yes" : "no");
 
     framer_.reset();
-    auto last_gga_send = std::chrono::steady_clock::now();
+    // Send the first GGA immediately by backdating the timer. VRS / nearest-
+    // base casters (e.g. PointOne "AUTO") only start streaming RTCM once they
+    // have the client position, and some drop a connection that stays idle.
+    // Waiting a full gga_period_s before the first upload would also let the
+    // stall watchdog (rtcm_timeout_s) reconnect before any corrections arrive,
+    // producing an endless connect->stall->reconnect loop with no RTCM.
+    auto last_gga_send = std::chrono::steady_clock::now() -
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(gga_period_s_));
     bool streamed_any = false;
     const std::size_t before = framer_.frames_emitted();
     // Arm the stall watchdog: treat the stream as live as of now.
