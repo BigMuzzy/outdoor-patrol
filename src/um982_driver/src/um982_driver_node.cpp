@@ -74,6 +74,11 @@ void Um982DriverNode::declare_parameters()
   baudrate_ = this->declare_parameter<int64_t>("baudrate", 115200);
   frame_id_ = this->declare_parameter<std::string>("frame_id", "gnss_link");
   heading_frame_id_ = this->declare_parameter<std::string>("heading_frame_id", "gnss_link");
+  // Drop /heading when the receiver's KSXT heading-quality is below this
+  // (0=invalid, 1=single, 2=RTK float, 3=RTK fixed). Default 1 rejects only
+  // the invalid 0.00 deg placeholder emitted when ANT2 has no signal.
+  min_heading_quality_ = static_cast<int>(
+    this->declare_parameter<int64_t>("min_heading_quality", 1));
   mode_ = this->declare_parameter<std::string>("mode", "rover");
   rover_dynamics_ = this->declare_parameter<std::string>("rover.dynamics", "AUTOMOTIVE");
   base_lat_ = this->declare_parameter<double>("base_fixed.lat", 0.0);
@@ -491,6 +496,19 @@ void Um982DriverNode::publish_vtg(const NmeaVtg & vtg)
 void Um982DriverNode::publish_ksxt(const KsxtSentence & k)
 {
   if (!k.heading_deg.has_value()) {return;}
+  // Gate on the receiver's dual-antenna heading-solution quality (KSXT:
+  // 0=invalid, 1=single, 2=RTK float, 3=RTK fixed). Quality 0 means the
+  // ANT1->ANT2 baseline is NOT solved (e.g. the secondary antenna ANT2 has no
+  // signal); the receiver then emits a placeholder 0.00 deg. Publishing that
+  // would feed a confidently-wrong absolute yaw into the EKF, so drop it and
+  // let localization fall back to wheel-odometry yaw.
+  if (static_cast<int>(k.heading_quality) < min_heading_quality_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+      "Dropping GNSS heading: KSXT heading-quality %u < %d "
+      "(dual-antenna baseline unsolved; check secondary antenna ANT2).",
+      static_cast<unsigned>(k.heading_quality), min_heading_quality_);
+    return;
+  }
   // Convert heading (deg, CW from True North) to a quaternion expressing
   // the rotation about Z (ENU yaw, CCW from East). yaw = pi/2 - heading.
   double heading_rad = *k.heading_deg * kDegToRad;

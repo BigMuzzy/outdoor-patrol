@@ -67,6 +67,7 @@ private:
   int64_t baudrate_{115200};
   std::string frame_id_;
   std::string heading_frame_id_;
+  int min_heading_quality_{1};
   std::string mode_;
   std::string rover_dynamics_;
   double base_lat_{0.0};

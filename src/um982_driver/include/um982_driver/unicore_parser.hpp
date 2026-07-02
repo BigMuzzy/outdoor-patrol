@@ -23,9 +23,8 @@ namespace um982_driver
 ///   7  Track over ground (deg)
 ///   8  Speed over ground (km/h)
 ///   9  Roll (deg)             -- some firmwares; may be empty
-///   10 Position quality (0=none, 1=single, 2=DGPS, 4=fixed RTK,
-///                       5=float RTK, 6=INS, etc.)
-///   11 Heading quality (0=none, 4=fixed, 5=float)
+///   10 Position quality (KSXT: 0=invalid, 1=single, 2=RTK float, 3=RTK fixed)
+///   11 Heading quality  (KSXT: 0=invalid, 1=single, 2=RTK float, 3=RTK fixed)
 ///   12 Satellites used in position
 ///   13 Satellites used in heading solution
 ///   14 East velocity (km/h)
