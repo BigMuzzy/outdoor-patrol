@@ -75,3 +75,4 @@ Other articles, ADRs, commits.
 
 ### gnss
 - [rtk-fix-hard-to-hold-while-moving.md](gnss/rtk-fix-hard-to-hold-while-moving.md)
+- [heading-wrong-ant2-no-signal.md](gnss/heading-wrong-ant2-no-signal.md)
