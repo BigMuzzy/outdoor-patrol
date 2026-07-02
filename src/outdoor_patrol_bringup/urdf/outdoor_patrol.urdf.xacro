@@ -27,13 +27,14 @@
   <xacro:property name="body_length"      value="${ch['body_length']}"/>
   <xacro:property name="body_width"       value="${ch['body_width']}"/>
   <xacro:property name="body_height"      value="${ch['body_height']}"/>
+  <xacro:property name="body_offset_x"    value="${ch['body_offset_x']}"/>
 
   <!-- base_footprint sits on the ground directly below base_link. -->
   <link name="base_footprint"/>
 
   <link name="base_link">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="${body_offset_x} 0 0" rpy="0 0 0"/>
       <geometry>
         <box size="${body_length} ${body_width} ${body_height}"/>
       </geometry>

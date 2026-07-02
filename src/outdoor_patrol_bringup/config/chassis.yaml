@@ -18,9 +18,12 @@ chassis:
   # base_footprint -> base_link offset (and the GNSS lever-arm Z reference).
   base_height: 0.150
   # Chassis visual box — cosmetic (RViz only).
-  body_length: 0.700
-  body_width: 0.500
+  body_length: 0.640
+  body_width: 0.440
   body_height: 0.200
+  # Fore-aft offset of the visual box center from base_link (the wheel axle).
+  # The body sits 0.22 m forward of the axle. +X = forward (nose). Cosmetic.
+  body_offset_x: 0.22
   wheel_width: 0.060
   # Teleop speed clamps — mirror firmware MAX_MANUAL_* limits so that
   # PC-side teleop never asks for more than the controller will allow.
