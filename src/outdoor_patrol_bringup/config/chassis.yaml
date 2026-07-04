@@ -5,7 +5,7 @@
 #
 # Wheel radius / separation mirror the ESP32-S3 firmware constants in
 # src/esp32-s3-uros-controller/firmware/main/diff_drive.h
-# (WHEEL_DIAMETER_M = 0.17068 -> radius 0.08534, TRACK_WIDTH_M = 0.52123,
+# (WHEEL_DIAMETER_M = 0.17068 -> radius 0.08534, TRACK_WIDTH_M = 0.54481,
 #  MAX_MANUAL_SPEED_MS = 1.0, MAX_MANUAL_ANGVEL = 0.67).
 # Keep this file and diff_drive.h in lock-step.
 chassis:
@@ -13,7 +13,7 @@ chassis:
   wheel_radius: 0.08534
   # Distance between left and right wheel centers, meters
   # (= TRACK_WIDTH_M in firmware).
-  wheel_separation: 0.52123
+  wheel_separation: 0.54481
   # Height of base_link origin above the ground, meters. Used for the URDF
   # base_footprint -> base_link offset (and the GNSS lever-arm Z reference).
   base_height: 0.150
