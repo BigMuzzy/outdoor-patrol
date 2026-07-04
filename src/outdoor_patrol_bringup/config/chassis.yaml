@@ -42,5 +42,10 @@ modules:
   # mounted laterally (ANT2 0.42 m LEFT), 0.84 m baseline -> the 90 deg yaw
   # offset lives in outdoor_patrol_loc config/heading_to_imu.yaml.
   gnss_link: { parent: base_link, xyz: "0.28 -0.42 0.18", rpy: "0 0 0" }
-  # imu_link:   { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M2
+  # Inertial Labs KERNEL IMU (M2). Measured 2026-07-04: 0.281 m forward, on
+  # centerline, 0.17 m above base_link (0.32 m above ground). The unit is
+  # bolted with its sensor axes X->up, Y->right, Z->forward (NOT REP-103), so
+  # rpy maps sensor->base_link as pitch -90 deg then yaw 180 deg. Data is
+  # published in imu_link; confirm rpy with the level-gravity + yaw-sign test.
+  imu_link:  { parent: base_link, xyz: "0.281 0 0.17", rpy: "0 -1.5708 3.14159" }
   # lidar_link: { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M3

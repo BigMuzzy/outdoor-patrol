@@ -94,4 +94,8 @@
   <xacro:module_frame name="gnss_link" parent="${gnss['parent']}"
                       xyz="${gnss['xyz']}" rpy="${gnss['rpy']}"/>
 
+  <xacro:property name="imu" value="${modules['imu_link']}"/>
+  <xacro:module_frame name="imu_link" parent="${imu['parent']}"
+                      xyz="${imu['xyz']}" rpy="${imu['rpy']}"/>
+
 </robot>

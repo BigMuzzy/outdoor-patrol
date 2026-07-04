@@ -36,6 +36,10 @@ services:
       # container — Docker maps the device node, not the /dev/serial/by-id
       # symlink. Override with GNSS_DEV if the receiver re-enumerates.
       - "${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}:${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}"   # UM982 GNSS
+      # Inertial Labs KERNEL IMU (FTDI FT230X). Mapped by its stable by-id
+      # path so the `port:` in imu_driver/config/imu_driver.yaml resolves
+      # inside the container. Override with IMU_DEV if the unit re-enumerates.
+      - "${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}:${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}"   # Inertial Labs KERNEL IMU
     #   - /dev/i2c-1:/dev/i2c-1
     #   - /dev/video0:/dev/video0
     #   - /dev/dri:/dev/dri           # Mali GPU
