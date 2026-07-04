@@ -1,4 +1,4 @@
-# Local EKF (M1 wheel odom + M2 IMU yaw rate) — robot_localization ekf_node.
+# Local EKF (wheel odom -> odom->base_link) — robot_localization ekf_node.
 #
 # Consumes the chassis wheel odometry (`/odom`, published by the ESP32-S3
 # micro-ROS controller) and broadcasts the `odom -> base_link` transform
@@ -6,7 +6,11 @@
 # (REP-105 single-writer rule); the firmware publishes the odom *message*
 # but must NOT broadcast TF.
 #
-# M2 adds the KERNEL IMU yaw rate as imu0 (below); wheel odom stays odom0.
+# M2 NOTE: the KERNEL IMU is fused in ekf_global (imu1) ONLY, not here.
+# Adding imu0 to THIS node broke its sensor setup (odom->base_link stopped
+# publishing, so ekf_global could not chain map->odom). Root-cause the
+# imu_link TF-init timing in this flaky micro-ROS/Cyclone graph before
+# re-adding. See repo memory 2026-07-04.
 #
 # DEPENDS ON firmware work stream 1:
 #   - odom.header.stamp set from rmw_uros_epoch_nanos() (synced agent time).
@@ -52,27 +56,3 @@ ekf_filter_node:
     odom0_differential: false
     odom0_relative: false
     odom0_nodelay: false
-
-    # --- imu0: KERNEL IMU yaw rate (M2) ------------------------------------
-    # Real IMU (src/imu_driver -> /imu_driver/data). Fuse the YAW RATE only:
-    # the KERNEL has no magnetometer (absolute yaw drifts) and two_d_mode zeros
-    # roll/pitch, so the gyro vyaw is the high-value signal — it sharpens the
-    # odom->base_link heading vs wheel-derived yaw. robot_localization rotates
-    # the sensor gyro into base_link via TF base_link->imu_link (chassis.yaml
-    # imu_link), so the sensor up-axis maps to vyaw. Linear accel left off
-    # (noisy on a wheeled 2D base; wheel odom already supplies vx).
-    #     [ x,     y,     z,
-    #       roll,  pitch, yaw,
-    #       vx,    vy,    vz,
-    #       vroll, vpitch,vyaw,
-    #       ax,    ay,    az ]
-    imu0: /imu_driver/data
-    imu0_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, true,
-                  false, false, false]
-    imu0_differential: false
-    imu0_relative: false
-    imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: false
