@@ -1,4 +1,4 @@
-# Local EKF (wheel odom -> odom->base_link) — robot_localization ekf_node.
+# M1 single-input EKF — robot_localization ekf_node.
 #
 # Consumes the chassis wheel odometry (`/odom`, published by the ESP32-S3
 # micro-ROS controller) and broadcasts the `odom -> base_link` transform
@@ -6,11 +6,7 @@
 # (REP-105 single-writer rule); the firmware publishes the odom *message*
 # but must NOT broadcast TF.
 #
-# M2 NOTE: the KERNEL IMU is fused in ekf_global (imu1) ONLY, not here.
-# Adding imu0 to THIS node broke its sensor setup (odom->base_link stopped
-# publishing, so ekf_global could not chain map->odom). Root-cause the
-# imu_link TF-init timing in this flaky micro-ROS/Cyclone graph before
-# re-adding. See repo memory 2026-07-04.
+# M2 extends THIS node with an IMU input (imu0). Keep it single-input here.
 #
 # DEPENDS ON firmware work stream 1:
 #   - odom.header.stamp set from rmw_uros_epoch_nanos() (synced agent time).

@@ -22,8 +22,6 @@
   <exec_depend>teleop_twist_keyboard</exec_depend>
   <!-- M1: localization.launch.py is included by odometry.launch.py. -->
   <exec_depend>outdoor_patrol_loc</exec_depend>
-  <!-- M2: imu_driver.launch.py is included by gnss_localization.launch.py. -->
-  <exec_depend>imu_driver</exec_depend>
   <!--
     micro_ros_agent is not a rosdep key on jazzy; install it from source
     via micro_ros_setup (see README "Quickstart - M0"). The teleop launch

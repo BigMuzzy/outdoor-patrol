@@ -13,7 +13,7 @@
 # SUNSET (ADR-012, amended 2026-06-27): the dual-EKF is PERMANENT. When LIO
 # (M4) lands it feeds THIS global EKF as an odometry input (this node keeps
 # sole ownership of `map -> odom`; LIO is NOT a second writer) and GNSS
-# demotes to a gated correction; the IMU (M2) is fused as imu1 (below).
+# demotes to a gated correction; when the IMU (M2) lands, add it as imu1 here.
 ekf_global:
   ros__parameters:
     frequency: 30.0
@@ -70,20 +70,3 @@ ekf_global:
     imu0_relative: false
     imu0_queue_size: 10
     imu0_remove_gravitational_acceleration: false
-
-    # --- imu1: KERNEL IMU yaw rate (M2) ------------------------------------
-    # Real IMU (src/imu_driver -> /imu_driver/data). imu0 above stays the GNSS
-    # dual-antenna ABSOLUTE yaw; this adds the gyro YAW RATE for smooth
-    # dead-reckoning between GNSS/heading updates. Yaw rate only (KERNEL has no
-    # magnetometer; two_d_mode zeros roll/pitch; accel left off). Rotated into
-    # base_link via TF base_link->imu_link.
-    imu1: /imu_driver/data
-    imu1_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, true,
-                  false, false, false]
-    imu1_differential: false
-    imu1_relative: false
-    imu1_queue_size: 10
-    imu1_remove_gravitational_acceleration: false
