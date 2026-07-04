@@ -9,6 +9,8 @@ robot:
    [outdoor_patrol_bringup]     -> /odom, /cmd_vel, TF base_link<->gnss_link
   gnss_rtk.launch.py            UM982 driver + NTRIP (RTK), lifecycle
    [um982_driver]               auto-activated -> /um982_driver/fix, /heading
+  imu_driver.launch.py          Inertial Labs KERNEL IMU (M2), lifecycle
+   [imu_driver]                 auto-activated -> /imu_driver/data (yaw rate)
   global_localization.launch.py dual-EKF + heading adapter + confidence_gate +
    [outdoor_patrol_loc]         navsat_transform -> odom->base_link, map->odom
   rviz2 (optional)              fixed frame = map
@@ -39,6 +41,7 @@ def generate_launch_description() -> LaunchDescription:
     loc = FindPackageShare('outdoor_patrol_loc')
     um982 = FindPackageShare('um982_driver')
     ntrip = FindPackageShare('ntrip_client')
+    imu = FindPackageShare('imu_driver')
 
     serial_dev = LaunchConfiguration('serial_dev')
     serial_baud = LaunchConfiguration('serial_baud')
@@ -86,6 +89,17 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
+    # Inertial Labs KERNEL IMU (M2). No standalone static TF — robot_state_
+    # publisher owns base_link->imu_link from the URDF (chassis.yaml imu_link).
+    imu_driver = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([imu, 'launch', 'imu_driver.launch.py'])),
+        launch_arguments={
+            'use_rviz': 'false',
+            'use_static_tf': 'false',
+        }.items(),
+    )
+
     # Dual-EKF + navsat + confidence_gate + heading adapter.
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -105,4 +119,4 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(use_rviz),
     )
 
-    return LaunchDescription(args + [teleop, gnss, localization, rviz])
+    return LaunchDescription(args + [teleop, gnss, imu_driver, localization, rviz])

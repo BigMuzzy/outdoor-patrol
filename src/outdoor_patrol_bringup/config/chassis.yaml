@@ -46,6 +46,7 @@ modules:
   # centerline, 0.17 m above base_link (0.32 m above ground). The unit is
   # bolted with its sensor axes X->up, Y->right, Z->forward (NOT REP-103), so
   # rpy maps sensor->base_link as pitch -90 deg then yaw 180 deg. Data is
-  # published in imu_link; confirm rpy with the level-gravity + yaw-sign test.
+  # published in imu_link. rpy CONFIRMED on hardware 2026-07-04: level ->
+  # accel.x +9.79 (X up); commanded CCW -> gyro.x +0.32 (sign OK).
   imu_link:  { parent: base_link, xyz: "0.281 0 0.17", rpy: "0 -1.5708 3.14159" }
   # lidar_link: { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M3
