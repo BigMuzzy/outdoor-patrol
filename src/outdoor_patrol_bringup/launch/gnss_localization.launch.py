@@ -157,12 +157,13 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # M3 (ADR-013): 2D RPLIDAR C1 -> /scan + a geometric forward safety brake.
-    # The sensor frame is LEFT-HANDED, so `inverted:=true` mirrors /scan into
-    # the right-handed lidar_link (empirically confirmed). scan_safety gates
-    # /cmd_vel_raw -> /cmd_vel (forward-only; reverse + rotation pass). Delayed
-    # like the IMU so core discovery settles first; nothing here writes /odom
-    # or map->odom. scan_safety is inert until something publishes /cmd_vel_raw
-    # (drive teleop/Nav2 to /cmd_vel_raw to engage the brake).
+    # This unit is mounted YAW-180 (its 0 deg faces the robot body): lidar_link
+    # is yawed pi (chassis.yaml) and inverted:=FALSE is the correct L/R
+    # handedness (confirmed in RViz on the robot 2026-07-11). scan_safety gates
+    # /cmd_vel_raw -> /cmd_vel (forward-only; reverse + rotation pass) using
+    # forward_offset_deg=180. Delayed like the IMU so core discovery settles
+    # first; nothing here writes /odom or map->odom. scan_safety is inert until
+    # something publishes /cmd_vel_raw (drive teleop/Nav2 to /cmd_vel_raw).
     lidar_node = Node(
         package='sllidar_ros2',
         executable='sllidar_node',
@@ -173,7 +174,7 @@ def generate_launch_description() -> LaunchDescription:
             'serial_port': LaunchConfiguration('lidar_dev'),
             'serial_baudrate': 460800,
             'frame_id': 'lidar_link',
-            'inverted': True,
+            'inverted': False,
             'angle_compensate': True,
             'scan_mode': 'Standard',
         }],

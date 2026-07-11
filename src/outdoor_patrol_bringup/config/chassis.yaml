@@ -54,9 +54,9 @@ modules:
   # Slamtec RPLIDAR C1 (M3 2D obstacle avoidance, ADR-013). Mount measured
   # 2026-07-11: 0.512 m forward, on centerline, 0.05 m above base_link
   # (~0.20 m above ground; low mount -> watch ground strikes / chassis
-  # occlusion). Two corrections for this unit: (1) the scan is LEFT-HANDED, so
-  # left/right is mirrored back to right-handed in the DATA via the sllidar
-  # `inverted` flag (a mirror can't go in rpy); (2) the sensor is mounted
+  # occlusion). Two corrections for this unit: (1) L/R handedness is set by the
+  # sllidar `inverted` flag -- inverted:=FALSE is correct here (confirmed in
+  # RViz on the robot; a mirror can't go in rpy); (2) the sensor is mounted
   # YAW-180 -- its 0 deg points BACKWARD at the robot body -- so lidar_link is
   # yawed pi to place the scan in base_link correctly. scan_safety uses
   # forward_offset_deg=180 to match (raw-angle node, no TF). Verified
