@@ -123,6 +123,14 @@ def generate_launch_description() -> LaunchDescription:
         launch_arguments={
             'use_rviz': 'false',
             'use_static_tf': 'false',
+            # Pass params_file EXPLICITLY. Included launch files share the
+            # parent's launch-configuration scope, and localization.launch.py
+            # also declares a generic `params_file` (for ekf.yaml). Without
+            # this, the imu node inherits THAT path, its own config never
+            # loads, and it falls back to code defaults (/dev/ttyUSB0 @115200)
+            # -> "Failed to open serial /dev/ttyUSB0".
+            'params_file': PathJoinSubstitution(
+                [imu_pkg, 'config', 'imu_driver.yaml']),
         }.items(),
     )
     imu_delayed = TimerAction(
