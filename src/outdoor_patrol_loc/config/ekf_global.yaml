@@ -70,3 +70,23 @@ ekf_global:
     imu0_relative: false
     imu0_queue_size: 10
     imu0_remove_gravitational_acceleration: false
+
+    # --- imu1: M2 IMU (imu_driver) — yaw RATE only -------------------------
+    # UMKA IMU-E73 via imu_driver (/imu_driver/data), fused here per the
+    # ADR-012 note above ("when the IMU (M2) lands, add it as imu1 here").
+    # Fuse ONLY the gyro yaw rate (vyaw): this debug unit outputs no computed
+    # orientation (identity quaternion), so absolute yaw stays owned by imu0
+    # (/gnss/heading) and linear acceleration is not fused. The gyro sharpens
+    # rotation between GNSS-heading updates. robot_localization rotates the
+    # rate from imu_link into base_link via the RSP TF (URDF base_link->
+    # imu_link), so the mount orientation must be correct (validate on-robot).
+    imu1: /imu_driver/data
+    imu1_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu1_differential: false
+    imu1_relative: false
+    imu1_queue_size: 10
+    imu1_remove_gravitational_acceleration: false

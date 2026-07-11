@@ -6,7 +6,11 @@
 # (REP-105 single-writer rule); the firmware publishes the odom *message*
 # but must NOT broadcast TF.
 #
-# M2 extends THIS node with an IMU input (imu0). Keep it single-input here.
+# M2 DECISION (2026-07-04): keep this LOCAL EKF single-input. The IMU is fused
+# as imu1 in the GLOBAL EKF only (config/ekf_global.yaml). Adding an IMU here
+# AND launching imu_driver with the stack re-triggers the odom->base_link
+# startup race (ekf_filter_node never latches the micro-ROS /odom). Do NOT add
+# imu0 here without revisiting that regression.
 #
 # DEPENDS ON firmware work stream 1:
 #   - odom.header.stamp set from rmw_uros_epoch_nanos() (synced agent time).

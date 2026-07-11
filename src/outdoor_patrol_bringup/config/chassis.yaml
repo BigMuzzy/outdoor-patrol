@@ -42,11 +42,13 @@ modules:
   # mounted laterally (ANT2 0.42 m LEFT), 0.84 m baseline -> the 90 deg yaw
   # offset lives in outdoor_patrol_loc config/heading_to_imu.yaml.
   gnss_link: { parent: base_link, xyz: "0.28 -0.42 0.18", rpy: "0 0 0" }
-  # Inertial Labs KERNEL IMU (M2). Measured 2026-07-04: 0.281 m forward, on
-  # centerline, 0.17 m above base_link (0.32 m above ground). The unit is
-  # bolted with its sensor axes X->up, Y->right, Z->forward (NOT REP-103), so
-  # rpy maps sensor->base_link as pitch -90 deg then yaw 180 deg. Data is
-  # published in imu_link. rpy CONFIRMED on hardware 2026-07-04: level ->
-  # accel.x +9.79 (X up); commanded CCW -> gyro.x +0.32 (sign OK).
-  imu_link:  { parent: base_link, xyz: "0.281 0 0.17", rpy: "0 -1.5708 3.14159" }
+  # UMKA IMU-E73 (M2) — replaced the failed Inertial Labs KERNEL 2026-07-10.
+  # Mounted with sensor axes X->front, Y->left, Z->up == REP-103, i.e. ALIGNED
+  # with base_link, so the rotation is identity (rpy "0 0 0"). (The old KERNEL
+  # sat X->up / Y->right / Z->fwd and needed rpy "0 -1.5708 3.14159".) xyz is
+  # the prior KERNEL mount (0.281 m forward, centerline, 0.17 m above base_link)
+  # carried over — re-measure if the new unit sits elsewhere; it does not affect
+  # the vyaw-only fusion (angular velocity is lever-arm independent). Validate
+  # on robot: drive CCW -> /imu_driver/data angular_velocity.z should be +.
+  imu_link:  { parent: base_link, xyz: "0.281 0 0.17", rpy: "0 0 0" }
   # lidar_link: { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M3
