@@ -44,6 +44,7 @@ def generate_launch_description() -> LaunchDescription:
     um982 = FindPackageShare('um982_driver')
     ntrip = FindPackageShare('ntrip_client')
     imu_pkg = FindPackageShare('imu_driver')
+    safety_pkg = FindPackageShare('outdoor_patrol_safety')
 
     serial_dev = LaunchConfiguration('serial_dev')
     serial_baud = LaunchConfiguration('serial_baud')
@@ -79,6 +80,22 @@ def generate_launch_description() -> LaunchDescription:
             description='Seconds to delay imu_driver startup so the micro-ROS '
                         'agent + local EKF latch onto /odom first — avoids '
                         'the M2 startup-race regression (2026-07-04).'),
+        DeclareLaunchArgument(
+            'use_lidar', default_value='true',
+            description='Launch the M3 RPLIDAR C1 (2D) + scan_safety forward '
+                        'brake (ADR-013).'),
+        DeclareLaunchArgument(
+            'lidar_dev',
+            default_value=(
+                '/dev/serial/by-id/'
+                'usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_'
+                'f86253bee863ef11a2a1e2a9c169b110-if00-port0'),
+            description='Serial by-id path of the RPLIDAR C1 (CP2102N). '
+                        'Override with lidar_dev:=... .'),
+        DeclareLaunchArgument(
+            'lidar_start_delay', default_value='8.0',
+            description='Seconds to delay the LiDAR driver + safety node so '
+                        'core discovery settles first (as imu_start_delay).'),
     ]
 
     # Chassis micro-ROS agent + robot_state_publisher (URDF + static TF).
@@ -139,6 +156,48 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(LaunchConfiguration('use_imu')),
     )
 
+    # M3 (ADR-013): 2D RPLIDAR C1 -> /scan + a geometric forward safety brake.
+    # The sensor frame is LEFT-HANDED, so `inverted:=true` mirrors /scan into
+    # the right-handed lidar_link (empirically confirmed). scan_safety gates
+    # /cmd_vel_raw -> /cmd_vel (forward-only; reverse + rotation pass). Delayed
+    # like the IMU so core discovery settles first; nothing here writes /odom
+    # or map->odom. scan_safety is inert until something publishes /cmd_vel_raw
+    # (drive teleop/Nav2 to /cmd_vel_raw to engage the brake).
+    lidar_node = Node(
+        package='sllidar_ros2',
+        executable='sllidar_node',
+        name='sllidar_node',
+        output='screen',
+        parameters=[{
+            'channel_type': 'serial',
+            'serial_port': LaunchConfiguration('lidar_dev'),
+            'serial_baudrate': 460800,
+            'frame_id': 'lidar_link',
+            'inverted': True,
+            'angle_compensate': True,
+            'scan_mode': 'Standard',
+        }],
+    )
+    scan_safety = Node(
+        package='outdoor_patrol_safety',
+        executable='scan_safety',
+        name='scan_safety',
+        output='screen',
+        parameters=[
+            PathJoinSubstitution([safety_pkg, 'config', 'scan_safety.yaml']),
+        ],
+        remappings=[
+            ('scan', '/scan'),
+            ('cmd_vel_in', '/cmd_vel_raw'),
+            ('cmd_vel_out', '/cmd_vel'),
+        ],
+    )
+    lidar_delayed = TimerAction(
+        period=LaunchConfiguration('lidar_start_delay'),
+        actions=[lidar_node, scan_safety],
+        condition=IfCondition(LaunchConfiguration('use_lidar')),
+    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -149,4 +208,4 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     return LaunchDescription(
-        args + [teleop, gnss, localization, imu_delayed, rviz])
+        args + [teleop, gnss, localization, imu_delayed, lidar_delayed, rviz])

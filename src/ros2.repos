@@ -16,3 +16,7 @@ repositories:
     type: git
     url: git@github.com:BigMuzzy/esp32-s3-uros-controller.git
     version: main
+  sllidar_ros2:
+    type: git
+    url: https://github.com/Slamtec/sllidar_ros2.git
+    version: main

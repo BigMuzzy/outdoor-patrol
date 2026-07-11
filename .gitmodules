@@ -10,3 +10,7 @@ branch = main
 path = src/micro_ros_setup
 url = https://github.com/micro-ROS/micro_ros_setup.git
 branch = jazzy
+[submodule "src/sllidar_ros2"]
+	path = src/sllidar_ros2
+	url = https://github.com/Slamtec/sllidar_ros2.git
+	branch = main

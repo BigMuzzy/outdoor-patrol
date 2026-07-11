@@ -98,4 +98,8 @@
   <xacro:module_frame name="imu_link" parent="${imu['parent']}"
                       xyz="${imu['xyz']}" rpy="${imu['rpy']}"/>
 
+  <xacro:property name="lidar" value="${modules['lidar_link']}"/>
+  <xacro:module_frame name="lidar_link" parent="${lidar['parent']}"
+                      xyz="${lidar['xyz']}" rpy="${lidar['rpy']}"/>
+
 </robot>

@@ -1,0 +1,14 @@
+# Geometric 2D-LiDAR forward safety brake (M3, ADR-013).
+scan_safety:
+  ros__parameters:
+    # Forward angular sector checked for obstacles, +/- this many degrees
+    # around the LiDAR's forward (0 deg) axis. lidar_link is aligned with
+    # base_link, so 0 deg == robot forward.
+    sector_half_angle_deg: 30.0
+    # Zero forward velocity if any return in the sector is closer than this.
+    stop_distance_m: 0.5
+    # Ignore returns closer than this (self-return / near-field noise; the
+    # C1 range_min is 0.05 m).
+    min_range_m: 0.06
+    # If the newest scan is older than this, fail safe and block forward.
+    scan_timeout_s: 0.5

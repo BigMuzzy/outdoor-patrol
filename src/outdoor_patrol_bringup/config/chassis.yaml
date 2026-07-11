@@ -51,4 +51,13 @@ modules:
   # the vyaw-only fusion (angular velocity is lever-arm independent). Validate
   # on robot: drive CCW -> /imu_driver/data angular_velocity.z should be +.
   imu_link:  { parent: base_link, xyz: "0.281 0 0.17", rpy: "0 0 0" }
-  # lidar_link: { parent: base_link, xyz: "0 0 0", rpy: "0 0 0" }   # M3
+  # Slamtec RPLIDAR C1 (M3 2D obstacle avoidance, ADR-013). Mount measured
+  # 2026-07-11: 0.512 m forward, on centerline, 0.05 m above base_link
+  # (~0.20 m above ground; low mount -> watch ground strikes / chassis
+  # occlusion). The sensor frame is LEFT-HANDED (X->forward, Y->RIGHT, Z->up);
+  # ROS/REP-103 frames must be right-handed and a mirror CANNOT be encoded in
+  # rpy, so lidar_link is a normal right-handed frame ALIGNED with base_link
+  # (rpy "0 0 0") and the left/right mirror is corrected in the SCAN DATA via
+  # the sllidar `inverted` flag. Verify: an object on the physical LEFT must
+  # appear on +Y (left) in /scan.
+  lidar_link: { parent: base_link, xyz: "0.512 0 0.05", rpy: "0 0 0" }

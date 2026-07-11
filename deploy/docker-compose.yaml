@@ -40,6 +40,10 @@ services:
       # path so the `port:` in imu_driver/config/imu_driver.yaml resolves
       # inside the container. Override with IMU_DEV if the unit re-enumerates.
       - "${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}:${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}"   # Inertial Labs KERNEL IMU
+      # RPLIDAR C1 (M3, 2D obstacle avoidance). USB-UART adapter = Silicon Labs
+      # CP2102N; mapped by its stable by-id path so `lidar_dev` resolves inside
+      # the container. Override with LIDAR_DEV if it re-enumerates.
+      - "${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}:${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"   # RPLIDAR C1
     #   - /dev/i2c-1:/dev/i2c-1
     #   - /dev/video0:/dev/video0
     #   - /dev/dri:/dev/dri           # Mali GPU
@@ -76,3 +80,4 @@ services:
       - "serial_baud:=${SERIAL_BAUD:-115200}"
       - "use_rviz:=false"
       - "ntrip_params_file:=${NTRIP_PARAMS:-/opt/outdoor-patrol/install/share/ntrip_client/config/ntrip.yaml.example}"
+      - "lidar_dev:=${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"

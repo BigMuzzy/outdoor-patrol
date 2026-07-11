@@ -24,6 +24,9 @@
   <exec_depend>outdoor_patrol_loc</exec_depend>
   <!-- M2: gnss_localization.launch.py includes imu_driver.launch.py. -->
   <exec_depend>imu_driver</exec_depend>
+  <!-- M3: gnss_localization.launch.py runs the RPLIDAR driver + scan_safety. -->
+  <exec_depend>sllidar_ros2</exec_depend>
+  <exec_depend>outdoor_patrol_safety</exec_depend>
   <!--
     micro_ros_agent is not a rosdep key on jazzy; install it from source
     via micro_ros_setup (see README "Quickstart - M0"). The teleop launch
