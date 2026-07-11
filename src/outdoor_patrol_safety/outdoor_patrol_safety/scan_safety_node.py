@@ -26,11 +26,14 @@ class ScanSafetyNode(Node):
     def __init__(self):
         super().__init__('scan_safety')
         self.declare_parameter('sector_half_angle_deg', 30.0)
+        self.declare_parameter('forward_offset_deg', 0.0)
         self.declare_parameter('stop_distance_m', 0.5)
         self.declare_parameter('min_range_m', 0.06)
         self.declare_parameter('scan_timeout_s', 0.5)
         self._half = math.radians(
             self.get_parameter('sector_half_angle_deg').value)
+        self._offset = math.radians(
+            self.get_parameter('forward_offset_deg').value)
         self._stop = float(self.get_parameter('stop_distance_m').value)
         self._min_range = float(self.get_parameter('min_range_m').value)
         self._timeout = float(self.get_parameter('scan_timeout_s').value)
@@ -44,8 +47,9 @@ class ScanSafetyNode(Node):
             LaserScan, 'scan', self._on_scan, qos_profile_sensor_data)
         self.create_subscription(Twist, 'cmd_vel_in', self._on_cmd, 10)
         self.get_logger().info(
-            'scan_safety up: forward sector +/-%.0f deg, stop %.2f m'
-            % (math.degrees(self._half), self._stop))
+            'scan_safety up: forward %.0f deg +/-%.0f deg, stop %.2f m'
+            % (math.degrees(self._offset), math.degrees(self._half),
+               self._stop))
 
     def _on_scan(self, msg):
         self._scan = msg
@@ -62,7 +66,11 @@ class ScanSafetyNode(Node):
         best = math.inf
         angle = scan.angle_min
         for rng in scan.ranges:
-            if -self._half <= angle <= self._half:
+            # Wrapped angular distance from robot-forward, so the sector works
+            # at any mount offset (this C1 is a 180 deg-yaw mount).
+            delta = math.atan2(math.sin(angle - self._offset),
+                               math.cos(angle - self._offset))
+            if -self._half <= delta <= self._half:
                 if self._min_range <= rng <= scan.range_max:
                     best = min(best, rng)
             angle += scan.angle_increment

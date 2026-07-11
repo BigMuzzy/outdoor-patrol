@@ -2,9 +2,14 @@
 scan_safety:
   ros__parameters:
     # Forward angular sector checked for obstacles, +/- this many degrees
-    # around the LiDAR's forward (0 deg) axis. lidar_link is aligned with
-    # base_link, so 0 deg == robot forward.
+    # around robot-forward (see forward_offset_deg below).
     sector_half_angle_deg: 30.0
+    # Bearing of ROBOT-FORWARD in the raw SCAN frame, degrees. This C1 is
+    # mounted yaw-180 (its 0 deg points at the robot body behind it), so
+    # robot-forward is at 180 deg in /scan. MUST match the lidar_link yaw in
+    # outdoor_patrol_bringup/config/chassis.yaml (this node reads raw scan
+    # angles; it does not use TF).
+    forward_offset_deg: 180.0
     # Zero forward velocity if any return in the sector is closer than this.
     stop_distance_m: 0.5
     # Ignore returns closer than this (self-return / near-field noise; the
