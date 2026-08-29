@@ -1,0 +1,34 @@
+# Box footprint filter — masks the robot's own body out of the 2D LiDAR scan.
+#
+# laser_filters/LaserScanBoxFilter drops every scan return whose (x, y, z) in
+# `box_frame` falls INSIDE the box (range set to the scan's invalid value).
+# This removes the chassis the nose-mounted RPLIDAR C1 sees around itself (the
+# sensor origin sits just inside the front face of the body) WITHOUT blanking a
+# whole angular wedge — real obstacles beyond the body are still reported.
+#
+# Box derived from the chassis body in base_link (config/chassis.yaml):
+#   body centre = (body_offset_x, 0, *)                = (0.22, 0, *)
+#   body size   = (body_length, body_width, body_height) = (0.640, 0.440, 0.200)
+#     => x in [0.22 - 0.320, 0.22 + 0.320] = [-0.100, 0.540]
+#        y in [        -0.220,       0.220]
+#   + 0.05 m margin so returns grazing the body surface are masked too:
+#        x in [-0.15, 0.59],  y in [-0.27, 0.27]
+# z is left generous: the 2D scan plane sits at base_link z = 0.05 (lidar_link
+# mount height), comfortably inside [-1.0, 1.0].
+#
+# Node name must match the launched node (gnss_localization.launch.py names it
+# `scan_box_filter`); the filter chain reads filterN from its own namespace.
+scan_box_filter:
+  ros__parameters:
+    filter1:
+      name: body_box
+      type: laser_filters/LaserScanBoxFilter
+      params:
+        box_frame: base_link
+        min_x: -0.15
+        max_x: 0.59
+        min_y: -0.27
+        max_y: 0.27
+        min_z: -1.0
+        max_z: 1.0
+        invert: false

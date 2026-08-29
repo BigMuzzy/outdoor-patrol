@@ -156,10 +156,14 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(LaunchConfiguration('use_imu')),
     )
 
-    # M3 (ADR-013): 2D RPLIDAR C1 -> /scan + a geometric forward safety brake.
-    # This unit is mounted YAW-180 (its 0 deg faces the robot body): lidar_link
-    # is yawed pi (chassis.yaml) and inverted:=FALSE is the correct L/R
-    # handedness (confirmed in RViz on the robot 2026-07-11). scan_safety gates
+    # M3 (ADR-013): 2D RPLIDAR C1 obstacle avoidance. Pipeline:
+    #   sllidar_node -> /scan_raw -> scan_box_filter (laser_filters
+    #   LaserScanBoxFilter: drops returns that land inside the robot's own
+    #   body -- a footprint box in base_link derived from config/chassis.yaml,
+    #   masking the chassis this nose-mounted unit sees around itself)
+    #   -> /scan -> scan_safety (forward brake) + costmap / RViz.
+    # Mount: lidar_link yawed pi (chassis.yaml) + inverted:=FALSE gives correct
+    # fwd/back AND L/R (confirmed in RViz 2026-07-11). scan_safety gates
     # /cmd_vel_raw -> /cmd_vel (forward-only; reverse + rotation pass) using
     # forward_offset_deg=180. Delayed like the IMU so core discovery settles
     # first; nothing here writes /odom or map->odom. scan_safety is inert until
@@ -178,6 +182,25 @@ def generate_launch_description() -> LaunchDescription:
             'angle_compensate': True,
             'scan_mode': 'Standard',
         }],
+        remappings=[('scan', '/scan_raw')],
+    )
+    # laser_filters LaserScanBoxFilter: masks the robot's own body out of the
+    # scan by dropping every return whose (x, y, z) in base_link falls inside
+    # the footprint box (config/scan_box_filter.yaml, derived from chassis.yaml
+    # body size). Needs base_link -> lidar_link TF from robot_state_publisher.
+    scan_filter = Node(
+        package='laser_filters',
+        executable='scan_to_scan_filter_chain',
+        name='scan_box_filter',
+        output='screen',
+        parameters=[
+            PathJoinSubstitution(
+                [bringup, 'config', 'scan_box_filter.yaml']),
+        ],
+        remappings=[
+            ('scan', '/scan_raw'),
+            ('scan_filtered', '/scan'),
+        ],
     )
     scan_safety = Node(
         package='outdoor_patrol_safety',
@@ -195,7 +218,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     lidar_delayed = TimerAction(
         period=LaunchConfiguration('lidar_start_delay'),
-        actions=[lidar_node, scan_safety],
+        actions=[lidar_node, scan_filter, scan_safety],
         condition=IfCondition(LaunchConfiguration('use_lidar')),
     )
 
