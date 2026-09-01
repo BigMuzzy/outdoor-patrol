@@ -30,15 +30,23 @@ it**.
 ```bash
 ./build.sh && source install/setup.bash
 
-# Terminal 1: headless sim + dual-EKF + GNSS (map -> odom -> base_link)
+# Terminal 1: headless sim + dual-EKF + GNSS + forward safety brake
 ros2 launch outdoor_patrol_sim sim.launch.py
 
-# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
+# Terminal 2: keyboard teleop. The brake sits between /cmd_vel_raw and
+# /cmd_vel, so the remap is REQUIRED -- without it you drive the chassis
+# directly and bypass the brake.
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+    --ros-args -r /cmd_vel:=/cmd_vel_raw
 
 # Terminal 3 (optional): RViz, ground truth overlaid on the EKF estimate
 ros2 launch outdoor_patrol_sim sim.launch.py use_rviz:=true
 ```
+
+> **Run only ONE sim at a time.** Two `gz sim` servers share the same
+> gz-transport topic names, so a second instance silently steals `/cmd_vel`
+> and `/scan` from the first. If the robot ignores the brake or moves when
+> you did not tell it to, check `pgrep -af "gz sim server"` first.
 
 Useful arguments:
 
@@ -48,7 +56,7 @@ Useful arguments:
 | `use_rviz` | `false` | RViz with [`config/sim.rviz`](config/sim.rviz), fixed frame `map`. |
 | `localization` | `true` | `false` skips the dual-EKF; no `map`/`odom` TF. |
 | `gnss` | `true` | `false` skips `gnss_sim`; no fix, no heading. |
-| `safety` | `false` | `true` splices the M3 forward brake between `/cmd_vel_raw` and `/cmd_vel`. |
+| `safety` | `true` | M3 forward brake between `/cmd_vel_raw` and `/cmd_vel`. `false` gives the ungated path. |
 | `world` | `worlds/patrol_yard.sdf` | Any SDF world. |
 | `x` / `y` / `yaw` | `0` | Spawn pose. |
 | `software_rendering` | `false` | Force llvmpipe (only for hosts with no `/dev/dri`). |
@@ -103,8 +111,8 @@ stays silent in sim — its UM982 input topic does not exist.
 
 ## The M3 forward safety brake
 
-`safety:=true` splices `scan_safety` into the command path, exactly as on the
-robot:
+On by default (`safety:=true`), matching the robot, where the brake is always
+in the command path. `scan_safety` is spliced in ahead of the chassis:
 
 ```
 teleop ──/cmd_vel_raw──▶ scan_safety ──/cmd_vel──▶ gz DiffDrive
@@ -112,14 +120,22 @@ teleop ──/cmd_vel_raw──▶ scan_safety ──/cmd_vel──▶ gz DiffDr
                            /scan
 ```
 
-**You must drive via `/cmd_vel_raw`**, or you publish straight to the chassis
-and bypass the brake with no warning:
+**Drive via `/cmd_vel_raw`.** Publishing to `/cmd_vel` reaches the chassis
+without passing the brake — silently, with no error. This is not a sim quirk;
+the real robot's `gnss_localization.launch.py` wires `scan_safety` the same
+way, so the same bypass exists there.
 
 ```bash
-ros2 launch outdoor_patrol_sim sim.launch.py safety:=true
-
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
     --ros-args -r /cmd_vel:=/cmd_vel_raw
+```
+
+Confirm the brake is actually live before trusting a run:
+
+```bash
+ros2 node list | grep scan_safety           # must print exactly one
+pgrep -af "gz sim server"                   # must print exactly one
+ros2 param get /ekf_filter_node odom0       # must print /odom, not "not set"
 ```
 
 The node reads **raw scan angles and does not use TF**, so its
@@ -159,6 +175,31 @@ only — rotation in place still works, so you can turn away and drive off.
   wall-clock `sleep` or a `ros2 topic pub` duration will move the robot much
   less than you expect — measure against `/clock` or `/odom_truth`, not a
   stopwatch.
+
+## Launch gotchas worth knowing
+
+Two non-obvious things this launch file works around. Both cost real debugging
+time; do not "simplify" them away.
+
+**Scoped includes.** `IncludeLaunchDescription` does *not* create a scope, so a
+`DeclareLaunchArgument` inside an included file leaks its value into the parent
+context. `scan_safety.launch.py` and `localization.launch.py` both declare an
+argument called `params_file`. Unscoped, the safety include leaks
+`scan_safety.yaml`; the EKF include then sees `params_file` already set, skips
+its own default, and loads the *safety* YAML instead of `ekf.yaml`. The node
+starts, advertises `/odometry/filtered` and `/tf`, and then publishes nothing
+at all — because it has no `odom0` input. Every include here is therefore
+wrapped in `GroupAction(scoped=True)`.
+[`gnss_localization.launch.py`](../outdoor_patrol_bringup/launch/gnss_localization.launch.py)
+hit the same trap and solves it by passing `params_file` explicitly.
+
+**The `/clock` gate.** `robot_localization` calls
+`Clock::wait_until_started()` inside `initialize()`, before its executor spins.
+Start it before Gazebo is publishing `/clock` and it parks on "Waiting for
+clock to start...". How long Gazebo takes to load the world varies with the
+machine and the sensor count, so a fixed delay is not reliable; the launch
+instead blocks on the first real `/clock` message and starts the EKF stack
+after that (plus `localization_start_delay` of margin).
 
 ## Headless rendering
 

@@ -14,9 +14,15 @@ never fuse it) and `/clock` (every node here runs with `use_sim_time:=true`).
 Headless by default so it works over SSH and in the dev container; pass
 `gui:=true` for the Gazebo GUI on a machine with a display.
 
-Drive it from a second terminal (needs a real TTY)::
+Drive it from a second terminal (needs a real TTY). The M3 forward brake is
+in the command path by default, so teleop must publish to `/cmd_vel_raw`::
 
-    ros2 run teleop_twist_keyboard teleop_twist_keyboard
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+        --ros-args -r /cmd_vel:=/cmd_vel_raw
+
+Publishing straight to `/cmd_vel` reaches the chassis WITHOUT passing the
+brake -- in sim exactly as it would on the robot. Pass `safety:=false` if you
+deliberately want the ungated path.
 
 Note: with `localization:=true` the included `heading_to_imu` node starts but
 stays silent — its UM982 input topic does not exist in sim, and `gnss_sim`
@@ -26,11 +32,9 @@ Caveat: the gz DiffDrive plugin has NO command watchdog, so the sim keeps
 driving on the last `/cmd_vel` forever. The real firmware fails safe and
 stops. Do not use the sim to validate stop-on-signal-loss behaviour.
 
-With `safety:=true` the M3 forward brake is spliced in ahead of the chassis,
-so you must drive via `/cmd_vel_raw` or you bypass it::
-
-    ros2 run teleop_twist_keyboard teleop_twist_keyboard \
-        --ros-args -r /cmd_vel:=/cmd_vel_raw
+Only run ONE instance at a time. Two `gz sim` servers share the same
+gz-transport topic names, so a second sim silently steals `/cmd_vel` and
+`/scan` from the first and nothing behaves as expected.
 """
 
 import os
@@ -41,10 +45,15 @@ from launch import LaunchDescription
 from launch.actions import (
     AppendEnvironmentVariable,
     DeclareLaunchArgument,
+    ExecuteProcess,
+    GroupAction,
     IncludeLaunchDescription,
+    RegisterEventHandler,
     SetEnvironmentVariable,
+    TimerAction,
 )
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     Command,
@@ -116,12 +125,19 @@ def generate_launch_description() -> LaunchDescription:
             description='Run gnss_sim (covariance-stamped /um982_driver/fix '
                         'and synthetic /gnss/heading).'),
         DeclareLaunchArgument(
-            'safety', default_value='false',
+            'safety', default_value='true',
             description='Run the M3 scan_safety forward brake between '
-                        '/cmd_vel_raw and /cmd_vel. When true you MUST drive '
-                        'via /cmd_vel_raw, or you bypass the brake: '
-                        'ros2 run teleop_twist_keyboard teleop_twist_keyboard '
-                        '--ros-args -r /cmd_vel:=/cmd_vel_raw'),
+                        '/cmd_vel_raw and /cmd_vel. On by default because it '
+                        'is always in the path on the robot. NOTE: you must '
+                        'then drive via /cmd_vel_raw -- publishing straight '
+                        'to /cmd_vel bypasses the brake, in sim exactly as it '
+                        'would on the robot.'),
+        DeclareLaunchArgument(
+            'localization_start_delay', default_value='3.0',
+            description='Extra seconds to wait after /clock goes live before '
+                        'starting the EKF stack. The launch already GATES on '
+                        'the first /clock message (see clock_gate below); '
+                        'this is only margin on top of that.'),
         DeclareLaunchArgument(
             'x', default_value='0.0', description='Spawn X in the world.'),
         DeclareLaunchArgument(
@@ -245,11 +261,37 @@ def generate_launch_description() -> LaunchDescription:
         ],
     )
 
-    localization = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution(
-                [loc_pkg, 'launch', 'global_localization.launch.py'])),
-        launch_arguments={'use_sim_time': 'true'}.items(),
+    # A robot_localization node calls Clock::wait_until_started() inside
+    # initialize(), BEFORE its executor spins. If /clock is not already live
+    # when it gets there it parks on "Waiting for clock to start..." and never
+    # recovers -- no odom -> base_link, no map -> odom, and the EKF topics stay
+    # silent. A fixed delay does not fix this reliably (how long Gazebo takes
+    # to load the world and start stepping varies with the machine and with
+    # how many sensors the world has), so gate on the real event: block until
+    # /clock actually delivers a message, then start the stack.
+    clock_gate = ExecuteProcess(
+        cmd=['ros2', 'topic', 'echo', '/clock', '--once'],
+        output='log',
+        condition=IfCondition(use_localization),
+    )
+
+    localization = RegisterEventHandler(
+        OnProcessExit(
+            target_action=clock_gate,
+            on_exit=[TimerAction(
+                period=LaunchConfiguration('localization_start_delay'),
+                actions=[GroupAction(
+                    scoped=True,
+                    actions=[IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource(
+                            PathJoinSubstitution(
+                                [loc_pkg, 'launch',
+                                 'global_localization.launch.py'])),
+                        launch_arguments={'use_sim_time': 'true'}.items(),
+                    )],
+                )],
+            )],
+        ),
         condition=IfCondition(use_localization),
     )
 
@@ -257,10 +299,22 @@ def generate_launch_description() -> LaunchDescription:
     # robot: scan_safety reads raw angles (no TF), and the sim's gpu_lidar
     # hangs off the yaw-pi lidar_link, so forward_offset_deg=180 is correct
     # here for the same reason it is on the real C1.
-    safety = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution(
-                [safety_pkg, 'launch', 'scan_safety.launch.py'])),
+    # NOTE: the includes here are wrapped in SCOPED GroupActions.
+    # IncludeLaunchDescription does NOT scope by default, so a
+    # DeclareLaunchArgument inside an included file leaks its value into this
+    # context. scan_safety.launch.py and localization.launch.py BOTH declare
+    # an argument called `params_file`; unscoped, the safety include leaks
+    # scan_safety.yaml, and the EKF -- included later -- sees `params_file`
+    # already set, skips its own default, and silently loads the safety YAML
+    # instead of ekf.yaml. It then comes up with no odom0 input and publishes
+    # nothing at all. Do not remove the scoping.
+    safety = GroupAction(
+        scoped=True,
+        actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                PathJoinSubstitution(
+                    [safety_pkg, 'launch', 'scan_safety.launch.py'])),
+        )],
         condition=IfCondition(use_safety),
     )
 
@@ -284,6 +338,7 @@ def generate_launch_description() -> LaunchDescription:
         odom_sim,
         gnss_sim,
         safety,
+        clock_gate,
         localization,
         rviz,
     ])

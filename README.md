@@ -157,17 +157,24 @@ the dev container.
 ```bash
 ./build.sh && source install/setup.bash
 
-# Terminal 1: sim + dual-EKF + GNSS (map -> odom -> base_link)
+# Terminal 1: sim + dual-EKF + GNSS + M3 forward safety brake
 ros2 launch outdoor_patrol_sim sim.launch.py
 
-# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
+# Terminal 2: keyboard teleop. The safety brake sits between /cmd_vel_raw
+# and /cmd_vel, so this remap is REQUIRED -- without it you command the
+# chassis directly and bypass the brake.
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+  --ros-args -r /cmd_vel:=/cmd_vel_raw
 
 # Optional: RViz with ground truth overlaid on the EKF estimate
 ros2 launch outdoor_patrol_sim sim.launch.py use_rviz:=true
 # Optional: Gazebo GUI (needs a display)
 ros2 launch outdoor_patrol_sim sim.launch.py gui:=true
 ```
+
+Run only **one** sim at a time: two `gz sim` servers share the same
+gz-transport topic names, so a second instance silently steals `/cmd_vel` and
+`/scan` from the first.
 
 The sim adds one topic that does not exist on the robot: `/odom_truth`,
 Gazebo's ground-truth pose. Score the EKF against it; never fuse it.
