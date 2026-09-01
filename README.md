@@ -146,6 +146,40 @@ Acceptance: at the dock origin, drive a 20 m line and confirm the EKF pose
 tracks GNSS within 0.3 m; cover the antenna mid-drive and confirm the gate
 inflates covariance (no `map` jump) and recovers cleanly.
 
+### Simulation (Gazebo Harmonic) — no hardware required
+
+[`outdoor_patrol_sim`](src/outdoor_patrol_sim) replaces the whole physical
+stack (ESP32-S3 chassis, UM982 GNSS, IMU, RPLIDAR) with a Gazebo model that
+publishes on the **same topic names**, so the localization stack above runs
+against it with no remaps. Headless by default, so it works over SSH and in
+the dev container.
+
+```bash
+./build.sh && source install/setup.bash
+
+# Terminal 1: sim + dual-EKF + GNSS (map -> odom -> base_link)
+ros2 launch outdoor_patrol_sim sim.launch.py
+
+# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+# Optional: RViz with ground truth overlaid on the EKF estimate
+ros2 launch outdoor_patrol_sim sim.launch.py use_rviz:=true
+# Optional: Gazebo GUI (needs a display)
+ros2 launch outdoor_patrol_sim sim.launch.py gui:=true
+```
+
+The sim adds one topic that does not exist on the robot: `/odom_truth`,
+Gazebo's ground-truth pose. Score the EKF against it; never fuse it.
+
+Read [`src/outdoor_patrol_sim/README.md`](src/outdoor_patrol_sim/README.md)
+before trusting a result — in particular the known differences from the real
+robot (no `/cmd_vel` watchdog, no RTK degradation, idealised wheel odometry).
+
+The robot description is shared: the sim includes the bringup xacro with
+`sim:=true`, which is the only thing that adds collision / inertia and makes
+the wheel joints `continuous`. Geometry stays in `config/chassis.yaml`.
+
 ---
 
 ## How to use this template

@@ -1,0 +1,63 @@
+# ros_gz_bridge topic map for the outdoor patrol sim.
+#
+# The gz-side names come from the <topic> tags in
+# urdf/outdoor_patrol_sim.urdf.xacro; the ROS-side names deliberately match
+# what the REAL drivers publish, so outdoor_patrol_loc runs against the sim
+# without a single remap.
+#
+# Exception: the raw simulated fix lands on /gnss/fix_sim and the raw wheel
+# odometry on /odom_sim, because neither gz message carries covariance — the
+# gnss_sim and odom_sim nodes fill that in and republish under the real names.
+
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# Chassis controller stand-in (ESP32-S3 firmware speaks plain Twist).
+- ros_topic_name: "/cmd_vel"
+  gz_topic_name: "/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/odom_sim"
+  gz_topic_name: "/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+# Ground truth for scoring the EKF. Never fuse this.
+- ros_topic_name: "/odom_truth"
+  gz_topic_name: "/odom_truth"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/joint_states"
+  gz_topic_name: "/joint_states"
+  ros_type_name: "sensor_msgs/msg/JointState"
+  gz_type_name: "gz.msgs.Model"
+  direction: GZ_TO_ROS
+
+# RPLIDAR C1 stand-in.
+- ros_topic_name: "/scan"
+  gz_topic_name: "/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+# UMKA IMU-E73 stand-in (imu_driver's topic name).
+- ros_topic_name: "/imu_driver/data"
+  gz_topic_name: "/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+# UM982 ANT1 stand-in -> gnss_sim -> /um982_driver/fix.
+- ros_topic_name: "/gnss/fix_sim"
+  gz_topic_name: "/navsat"
+  ros_type_name: "sensor_msgs/msg/NavSatFix"
+  gz_type_name: "gz.msgs.NavSat"
+  direction: GZ_TO_ROS

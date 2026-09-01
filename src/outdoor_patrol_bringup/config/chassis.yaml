@@ -25,6 +25,12 @@ chassis:
   # The body sits 0.22 m forward of the axle. +X = forward (nose). Cosmetic.
   body_offset_x: 0.22
   wheel_width: 0.060
+  # --- Simulation-only (consumed by the URDF when sim:=true) ---------------
+  # Estimated masses for the Gazebo inertia tensors (outdoor_patrol_sim).
+  # They do NOT affect the real robot; refine against a real weigh-in if the
+  # sim's acceleration / tipping behaviour stops matching the field.
+  body_mass: 28.0    # kg, chassis + payload
+  wheel_mass: 1.6    # kg, per drive wheel
   # Teleop speed clamps — mirror firmware MAX_MANUAL_* limits so that
   # PC-side teleop never asks for more than the controller will allow.
   max_linear_velocity: 1.0    # m/s   (MAX_MANUAL_SPEED_MS)

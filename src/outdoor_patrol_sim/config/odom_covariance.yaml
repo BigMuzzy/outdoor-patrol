@@ -1,0 +1,15 @@
+# odom_sim — covariance the gz DiffDrive plugin does not provide.
+#
+# These MUST match the "Static odom covariance diagonals" block in
+# src/esp32-s3-uros-controller/firmware/main/uros_task.c. If the firmware
+# numbers change, change them here too, otherwise the EKF behaves differently
+# in sim than it does on the robot.
+#
+# Order is [x, y, z, roll, pitch, yaw] / [vx, vy, vz, vroll, vpitch, vyaw];
+# 1e6 marks a dimension the diff-drive chassis cannot observe.
+odom_sim:
+  ros__parameters:
+    input_topic: /odom_sim
+    output_topic: /odom
+    pose_covariance_diagonal: [0.00096, 0.00060, 1.0e6, 1.0e6, 1.0e6, 0.00054]
+    twist_covariance_diagonal: [0.001, 1.0e6, 1.0e6, 1.0e6, 1.0e6, 0.003]

@@ -1,0 +1,133 @@
+# RViz preset for the Gazebo sim (outdoor_patrol_sim).
+#
+# Fixed frame is `map`, so it shows the global EKF's estimate. The green
+# "GroundTruth" arrows come from Gazebo's /odom_truth and only exist in sim —
+# the gap between green and orange IS the localization error.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 1
+      Plane Cell Count: 40
+    - Class: rviz_default_plugins/TF
+      Enabled: false
+      Name: TF
+      Show Names: true
+      Show Axes: true
+      Show Arrows: true
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Scan
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 4
+      Color: 255; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: GroundTruth
+      Topic:
+        Value: /odom_truth
+        Depth: 100
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Covariance:
+        Value: false
+      Keep: 1000
+      Position Tolerance: 0.1
+      Angle Tolerance: 0.1
+      Shape:
+        Value: Arrow
+        Color: 0; 255; 0
+        Alpha: 0.8
+        Shaft Length: 0.3
+        Shaft Radius: 0.03
+        Head Length: 0.1
+        Head Radius: 0.06
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: GlobalEKF
+      Topic:
+        Value: /odometry/global
+        Depth: 100
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Covariance:
+        Value: true
+      Keep: 1000
+      Position Tolerance: 0.1
+      Angle Tolerance: 0.1
+      Shape:
+        Value: Arrow
+        Color: 255; 85; 0
+        Alpha: 1.0
+        Shaft Length: 0.3
+        Shaft Radius: 0.03
+        Head Length: 0.1
+        Head Radius: 0.06
+    - Class: rviz_default_plugins/Odometry
+      Enabled: false
+      Name: GnssFix
+      Topic:
+        Value: /odometry/gps
+        Depth: 100
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Covariance:
+        Value: false
+      Keep: 500
+      Position Tolerance: 0.05
+      Angle Tolerance: 6.3
+      Shape:
+        Value: Arrow
+        Color: 100; 100; 255
+        Alpha: 0.6
+        Shaft Length: 0.1
+        Shaft Radius: 0.02
+        Head Length: 0.05
+        Head Radius: 0.04
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Measure
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 12.0
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Current View
+      Pitch: 0.6
+      Yaw: 0.785
+Window Geometry:
+  Height: 800
+  Width: 1200

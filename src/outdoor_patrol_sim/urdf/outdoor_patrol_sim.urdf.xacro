@@ -1,0 +1,214 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="outdoor_patrol">
+
+  <!--
+    Gazebo (Harmonic / gz-sim 8) wrapper around the real robot description.
+
+    It includes outdoor_patrol_bringup's URDF with sim:=true (which adds
+    collision + inertial blocks and turns the wheel joints continuous) and
+    then bolts on the things that only exist in simulation:
+
+      * a frictionless front caster so the two-wheel chassis does not tip,
+      * surface friction on the drive wheels,
+      * the DiffDrive / JointStatePublisher / OdometryPublisher systems,
+      * gpu_lidar + imu + navsat sensors on the URDF module frames.
+
+    Geometry still comes from config/chassis.yaml in outdoor_patrol_bringup —
+    do NOT duplicate dimensions here.
+
+    Sensor <topic> names are the gz-transport names; the ROS-side names are
+    mapped in config/gz_bridge.yaml.
+  -->
+
+  <xacro:arg name="sim" default="true"/>
+  <xacro:include
+      filename="$(find outdoor_patrol_bringup)/urdf/outdoor_patrol.urdf.xacro"/>
+
+  <xacro:property name="caster_radius" value="0.05"/>
+  <!-- 0.06 m behind the nose of the visual box. -->
+  <xacro:property name="caster_x"
+      value="${body_offset_x + body_length/2 - 0.06}"/>
+
+  <link name="caster_link">
+    <visual>
+      <geometry>
+        <sphere radius="${caster_radius}"/>
+      </geometry>
+      <material name="caster_grey">
+        <color rgba="0.2 0.2 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="${caster_radius}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.2"/>
+      <inertia ixx="${0.4 * 0.2 * caster_radius * caster_radius}" ixy="0" ixz="0"
+               iyy="${0.4 * 0.2 * caster_radius * caster_radius}" iyz="0"
+               izz="${0.4 * 0.2 * caster_radius * caster_radius}"/>
+    </inertial>
+  </link>
+
+  <joint name="base_link_to_caster" type="fixed">
+    <parent link="base_link"/>
+    <child  link="caster_link"/>
+    <origin xyz="${caster_x} 0 ${-base_height + caster_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ── Surface properties ──────────────────────────────────────────── -->
+  <xacro:macro name="wheel_surface" params="link">
+    <gazebo reference="${link}">
+      <mu1>1.2</mu1>
+      <mu2>1.2</mu2>
+      <kp>1e6</kp>
+      <kd>10.0</kd>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:wheel_surface link="left_wheel_link"/>
+  <xacro:wheel_surface link="right_wheel_link"/>
+
+  <!-- A fixed sphere only behaves like a caster if it barely grips. -->
+  <gazebo reference="caster_link">
+    <mu1>0.02</mu1>
+    <mu2>0.02</mu2>
+  </gazebo>
+
+  <!-- ── Chassis systems ─────────────────────────────────────────────── -->
+  <gazebo>
+    <!--
+      Stands in for the ESP32-S3 controller: consumes /cmd_vel
+      (geometry_msgs/Twist, as the firmware does) and publishes the wheel
+      odometry on /odom. TF is deliberately routed to a dead topic — the
+      robot_localization EKF owns odom -> base_link (REP-105 single writer),
+      exactly as on the real robot.
+    -->
+    <plugin filename="gz-sim-diff-drive-system"
+            name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>${wheel_separation}</wheel_separation>
+      <wheel_radius>${wheel_radius}</wheel_radius>
+      <topic>cmd_vel</topic>
+      <odom_topic>odom</odom_topic>
+      <tf_topic>unused/diff_drive_tf</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <!-- Mirrors MAX_MANUAL_* in the firmware (config/chassis.yaml). -->
+      <max_linear_velocity>${ch['max_linear_velocity']}</max_linear_velocity>
+      <min_linear_velocity>${-ch['max_linear_velocity']}</min_linear_velocity>
+      <max_angular_velocity>${ch['max_angular_velocity']}</max_angular_velocity>
+      <min_angular_velocity>${-ch['max_angular_velocity']}</min_angular_velocity>
+      <max_linear_acceleration>1.5</max_linear_acceleration>
+      <min_linear_acceleration>-1.5</min_linear_acceleration>
+    </plugin>
+
+    <plugin filename="gz-sim-joint-state-publisher-system"
+            name="gz::sim::systems::JointStatePublisher">
+      <topic>joint_states</topic>
+    </plugin>
+
+    <!--
+      Ground truth, for scoring the EKF and for synthesising the dual-antenna
+      heading (see the gnss_sim node). Not a sensor — never fuse it.
+    -->
+    <plugin filename="gz-sim-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>map</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_topic>odom_truth</odom_topic>
+      <tf_topic>unused/truth_tf</tf_topic>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <dimensions>3</dimensions>
+    </plugin>
+  </gazebo>
+
+  <!-- ── Sensors ─────────────────────────────────────────────────────── -->
+  <!--
+    Slamtec RPLIDAR C1 stand-in: 10 Hz, 360 deg, 0.05-12 m. lidar_link is
+    already yawed pi in the URDF to match the physical mount, so the scan
+    lands in base_link correctly without any extra rotation here.
+  -->
+  <gazebo reference="lidar_link">
+    <sensor name="rplidar_c1" type="gpu_lidar">
+      <topic>scan</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>720</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159</min_angle>
+            <max_angle>3.14159</max_angle>
+          </horizontal>
+          <vertical>
+            <samples>1</samples>
+            <min_angle>0</min_angle>
+            <max_angle>0</max_angle>
+          </vertical>
+        </scan>
+        <range>
+          <min>0.05</min>
+          <max>12.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <!--
+    UMKA IMU-E73 stand-in. The real unit reports no computed orientation, so
+    only the gyro yaw rate is fused (imu1 in ekf_global.yaml); the orientation
+    field the sim emits is simply ignored by that config.
+  -->
+  <gazebo reference="imu_link">
+    <sensor name="umka_imu" type="imu">
+      <topic>imu</topic>
+      <gz_frame_id>imu_link</gz_frame_id>
+      <update_rate>100</update_rate>
+      <always_on>true</always_on>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.002</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.002</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.002</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.02</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.02</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.02</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+  <!--
+    UM982 ANT1 stand-in.
+
+    NO sensor-side noise on purpose: gz-sim's navsat <position_sensing> noise
+    is added to the latitude / longitude *in degrees*, so a "0.02" that reads
+    like 2 cm actually throws the fix kilometres off. Metric noise is added
+    instead by the gnss_sim node, which also stamps the covariance the gz
+    NavSat message cannot carry and synthesises the dual-antenna heading.
+  -->
+  <gazebo reference="gnss_link">
+    <sensor name="um982_ant1" type="navsat">
+      <topic>navsat</topic>
+      <gz_frame_id>gnss_link</gz_frame_id>
+      <update_rate>5</update_rate>
+      <always_on>true</always_on>
+    </sensor>
+  </gazebo>
+
+</robot>
