@@ -138,7 +138,8 @@
       <gz_frame_id>lidar_link</gz_frame_id>
       <update_rate>10</update_rate>
       <always_on>true</always_on>
-      <visualize>false</visualize>
+      <!-- Lets the Gazebo GUI's "Visualize Lidar" plugin draw the rays. -->
+      <visualize>true</visualize>
       <lidar>
         <scan>
           <horizontal>

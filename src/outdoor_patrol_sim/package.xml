@@ -23,6 +23,8 @@
   <!-- Geometry + chassis.yaml single source of truth, and the EKF stack. -->
   <exec_depend>outdoor_patrol_bringup</exec_depend>
   <exec_depend>outdoor_patrol_loc</exec_depend>
+  <!-- safety:=true splices the M3 forward brake ahead of the chassis. -->
+  <exec_depend>outdoor_patrol_safety</exec_depend>
 
   <!-- Gazebo Harmonic via the ros_gz vendor packages (jazzy). -->
   <exec_depend>ros_gz_sim</exec_depend>

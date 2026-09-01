@@ -48,6 +48,7 @@ Useful arguments:
 | `use_rviz` | `false` | RViz with [`config/sim.rviz`](config/sim.rviz), fixed frame `map`. |
 | `localization` | `true` | `false` skips the dual-EKF; no `map`/`odom` TF. |
 | `gnss` | `true` | `false` skips `gnss_sim`; no fix, no heading. |
+| `safety` | `false` | `true` splices the M3 forward brake between `/cmd_vel_raw` and `/cmd_vel`. |
 | `world` | `worlds/patrol_yard.sdf` | Any SDF world. |
 | `x` / `y` / `yaw` | `0` | Spawn pose. |
 | `software_rendering` | `false` | Force llvmpipe (only for hosts with no `/dev/dri`). |
@@ -100,6 +101,46 @@ in lock-step with the "Static odom covariance diagonals" block in
 `heading_to_imu` still starts as part of `global_localization.launch.py`, but
 stays silent in sim — its UM982 input topic does not exist.
 
+## The M3 forward safety brake
+
+`safety:=true` splices `scan_safety` into the command path, exactly as on the
+robot:
+
+```
+teleop ──/cmd_vel_raw──▶ scan_safety ──/cmd_vel──▶ gz DiffDrive
+                             ▲
+                           /scan
+```
+
+**You must drive via `/cmd_vel_raw`**, or you publish straight to the chassis
+and bypass the brake with no warning:
+
+```bash
+ros2 launch outdoor_patrol_sim sim.launch.py safety:=true
+
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+    --ros-args -r /cmd_vel:=/cmd_vel_raw
+```
+
+The node reads **raw scan angles and does not use TF**, so its
+`forward_offset_deg: 180.0` depends on the LiDAR being mounted yaw-180. That
+holds in sim for the same reason it holds on the robot: the `gpu_lidar` hangs
+off `lidar_link`, which `chassis.yaml` yaws by pi. The parameters are used
+unmodified — there is no sim-specific safety config.
+
+Measured in the default world, driving at the box at `x=5.0` (front face
+`x=4.70`) for 25 s at 0.5 m/s:
+
+| | Final `base_link` x | Gap to box |
+| --- | --- | --- |
+| `safety:=false` | 4.160 | 0 — robot front at 4.70, hard contact |
+| `safety:=true` | 3.774 | 0.39 m of clear air |
+
+The brake fires at exactly `stop_distance_m` (0.5 m from the LiDAR) and the
+robot then coasts ~8 cm, because the DiffDrive plugin's
+`max_linear_acceleration` limits the deceleration. It blocks forward motion
+only — rotation in place still works, so you can turn away and drive off.
+
 ## Known differences from the real robot
 
 - **No `/cmd_vel` watchdog.** The gz DiffDrive plugin drives on the last
@@ -113,6 +154,11 @@ stays silent in sim — its UM982 input topic does not exist.
 - **The IMU reports orientation**, unlike the real debug unit which emits an
   identity quaternion. `ekf_global` fuses yaw rate only, so this makes no
   difference to the filter, but do not start relying on it.
+- **Real-time factor is not 1.0.** On software rendering it runs at roughly
+  1.0 headless but drops to ~0.3 with `gui:=true`. Anything you time with a
+  wall-clock `sleep` or a `ros2 topic pub` duration will move the robot much
+  less than you expect — measure against `/clock` or `/odom_truth`, not a
+  stopwatch.
 
 ## Headless rendering
 

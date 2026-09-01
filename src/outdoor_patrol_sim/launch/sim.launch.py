@@ -25,6 +25,12 @@ publishes `/gnss/heading` directly from ground truth instead.
 Caveat: the gz DiffDrive plugin has NO command watchdog, so the sim keeps
 driving on the last `/cmd_vel` forever. The real firmware fails safe and
 stops. Do not use the sim to validate stop-on-signal-loss behaviour.
+
+With `safety:=true` the M3 forward brake is spliced in ahead of the chassis,
+so you must drive via `/cmd_vel_raw` or you bypass it::
+
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+        --ros-args -r /cmd_vel:=/cmd_vel_raw
 """
 
 import os
@@ -71,6 +77,7 @@ def _spawn_height() -> str:
 def generate_launch_description() -> LaunchDescription:
     sim_pkg = FindPackageShare('outdoor_patrol_sim')
     loc_pkg = FindPackageShare('outdoor_patrol_loc')
+    safety_pkg = FindPackageShare('outdoor_patrol_safety')
     sim_share = get_package_share_directory('outdoor_patrol_sim')
 
     world = LaunchConfiguration('world')
@@ -78,6 +85,7 @@ def generate_launch_description() -> LaunchDescription:
     use_rviz = LaunchConfiguration('use_rviz')
     use_localization = LaunchConfiguration('localization')
     use_gnss = LaunchConfiguration('gnss')
+    use_safety = LaunchConfiguration('safety')
 
     args = [
         DeclareLaunchArgument(
@@ -107,6 +115,13 @@ def generate_launch_description() -> LaunchDescription:
             'gnss', default_value='true',
             description='Run gnss_sim (covariance-stamped /um982_driver/fix '
                         'and synthetic /gnss/heading).'),
+        DeclareLaunchArgument(
+            'safety', default_value='false',
+            description='Run the M3 scan_safety forward brake between '
+                        '/cmd_vel_raw and /cmd_vel. When true you MUST drive '
+                        'via /cmd_vel_raw, or you bypass the brake: '
+                        'ros2 run teleop_twist_keyboard teleop_twist_keyboard '
+                        '--ros-args -r /cmd_vel:=/cmd_vel_raw'),
         DeclareLaunchArgument(
             'x', default_value='0.0', description='Spawn X in the world.'),
         DeclareLaunchArgument(
@@ -238,6 +253,17 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(use_localization),
     )
 
+    # M3 forward brake. Runs against the SAME raw-scan convention as the
+    # robot: scan_safety reads raw angles (no TF), and the sim's gpu_lidar
+    # hangs off the yaw-pi lidar_link, so forward_offset_deg=180 is correct
+    # here for the same reason it is on the real C1.
+    safety = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [safety_pkg, 'launch', 'scan_safety.launch.py'])),
+        condition=IfCondition(use_safety),
+    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -257,6 +283,7 @@ def generate_launch_description() -> LaunchDescription:
         bridge,
         odom_sim,
         gnss_sim,
+        safety,
         localization,
         rviz,
     ])
