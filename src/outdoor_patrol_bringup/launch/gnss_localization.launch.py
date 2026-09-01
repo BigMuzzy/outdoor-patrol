@@ -167,7 +167,10 @@ def generate_launch_description() -> LaunchDescription:
     # /cmd_vel_raw -> /cmd_vel (forward-only; reverse + rotation pass) using
     # forward_offset_deg=180. Delayed like the IMU so core discovery settles
     # first; nothing here writes /odom or map->odom. scan_safety is inert until
-    # something publishes /cmd_vel_raw (drive teleop/Nav2 to /cmd_vel_raw).
+    # something publishes /cmd_vel_raw (drive teleop/Nav2 to /cmd_vel_raw); it
+    # then HOLDS that command and re-gates it at 20 Hz until the command goes
+    # unrefreshed for cmd_timeout_s, so it can also stop a robot that is
+    # already moving.
     lidar_node = Node(
         package='sllidar_ros2',
         executable='sllidar_node',

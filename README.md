@@ -162,7 +162,9 @@ ros2 launch outdoor_patrol_sim sim.launch.py
 
 # Terminal 2: keyboard teleop. The safety brake sits between /cmd_vel_raw
 # and /cmd_vel, so this remap is REQUIRED -- without it you command the
-# chassis directly and bypass the brake.
+# chassis directly and bypass the brake. A keypress drives for 500 ms and
+# then stops (the brake's command TTL, matching the firmware watchdog), so
+# hold the key to keep moving.
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
   --ros-args -r /cmd_vel:=/cmd_vel_raw
 
@@ -181,7 +183,8 @@ Gazebo's ground-truth pose. Score the EKF against it; never fuse it.
 
 Read [`src/outdoor_patrol_sim/README.md`](src/outdoor_patrol_sim/README.md)
 before trusting a result — in particular the known differences from the real
-robot (no `/cmd_vel` watchdog, no RTK degradation, idealised wheel odometry).
+robot (no RTK degradation, idealised wheel odometry, and a `DiffDrive` plugin
+with no command watchdog of its own).
 
 The robot description is shared: the sim includes the bringup xacro with
 `sim:=true`, which is the only thing that adds collision / inertia and makes

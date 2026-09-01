@@ -25,12 +25,18 @@ brake -- in sim exactly as it would on the robot. Pass `safety:=false` if you
 deliberately want the ungated path.
 
 Note: with `localization:=true` the included `heading_to_imu` node starts but
-stays silent — its UM982 input topic does not exist in sim, and `gnss_sim`
+stays silent -- its UM982 input topic does not exist in sim, and `gnss_sim`
 publishes `/gnss/heading` directly from ground truth instead.
 
-Caveat: the gz DiffDrive plugin has NO command watchdog, so the sim keeps
-driving on the last `/cmd_vel` forever. The real firmware fails safe and
-stops. Do not use the sim to validate stop-on-signal-loss behaviour.
+Caveat: the gz DiffDrive plugin has NO command watchdog of its own -- it
+holds the last `/cmd_vel` forever. What stops the robot in sim is
+`scan_safety`, which holds the last raw command, re-gates it against the
+freshest scan at 20 Hz, and emits a zero Twist once the command goes
+unrefreshed for `cmd_timeout_s` (0.5 s, mirroring the firmware's
+CMD_VEL_TIMEOUT_MS). So a single keypress drives for ~0.5 s and stops, as it
+does on the robot. Two consequences: with `safety:=false` nothing stops the
+robot at all, and the sim still cannot validate the firmware's own
+stop-on-signal-loss path -- only the brake's stand-in for it.
 
 Only run ONE instance at a time. Two `gz sim` servers share the same
 gz-transport topic names, so a second sim silently steals `/cmd_vel` and
@@ -314,6 +320,7 @@ def generate_launch_description() -> LaunchDescription:
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution(
                     [safety_pkg, 'launch', 'scan_safety.launch.py'])),
+            launch_arguments={'use_sim_time': 'true'}.items(),
         )],
         condition=IfCondition(use_safety),
     )

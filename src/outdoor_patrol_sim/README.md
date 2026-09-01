@@ -35,7 +35,8 @@ ros2 launch outdoor_patrol_sim sim.launch.py
 
 # Terminal 2: keyboard teleop. The brake sits between /cmd_vel_raw and
 # /cmd_vel, so the remap is REQUIRED -- without it you drive the chassis
-# directly and bypass the brake.
+# directly and bypass the brake. Hold the key to keep moving: a single
+# keypress expires after 500 ms (see "command TTL" below).
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
     --ros-args -r /cmd_vel:=/cmd_vel_raw
 
@@ -145,7 +146,7 @@ off `lidar_link`, which `chassis.yaml` yaws by pi. The parameters are used
 unmodified — there is no sim-specific safety config.
 
 Measured in the default world, driving at the box at `x=5.0` (front face
-`x=4.70`) for 25 s at 0.5 m/s:
+`x=4.70`) for 25 s at 0.5 m/s with a continuously refreshed command:
 
 | | Final `base_link` x | Gap to box |
 | --- | --- | --- |
@@ -157,11 +158,31 @@ robot then coasts ~8 cm, because the DiffDrive plugin's
 `max_linear_acceleration` limits the deceleration. It blocks forward motion
 only — rotation in place still works, so you can turn away and drive off.
 
+### Why it re-gates on a timer
+
+The brake holds the last raw command and re-evaluates it against the freshest
+scan every `control_period_s` (20 Hz), rather than gating each command as it
+arrives. Arrival-time gating cannot stop a robot that is *already* moving, and
+that is exactly the sim's teleop case: `teleop_twist_keyboard` publishes one
+Twist per keypress, the DiffDrive plugin holds it forever, and no later
+message ever arrives to gate against an obstacle that appears afterwards — the
+robot drove straight into the box with the brake running and reporting no
+fault.
+
+A held command expires after `cmd_timeout_s` (0.5 s, mirroring
+`CMD_VEL_TIMEOUT_MS` in the firmware's `rc_failsafe.h`). On expiry the node
+emits a single zero Twist and then goes quiet, so a dead command source stops
+the robot here while the firmware watchdog still sees silence and fails safe.
+The visible consequence in sim: **one keypress drives for ~0.5 s and stops**
+— hold the key to keep going, exactly as on the robot.
+
 ## Known differences from the real robot
 
-- **No `/cmd_vel` watchdog.** The gz DiffDrive plugin drives on the last
-  command forever; the firmware fails safe and stops. Do not use the sim to
-  validate stop-on-signal-loss.
+- **No chassis-level `/cmd_vel` watchdog.** The gz DiffDrive plugin drives on
+  the last command forever. In the default configuration `scan_safety` covers
+  for it (see the command TTL above), but with `safety:=false` nothing stops
+  the robot, and either way the sim exercises the brake's stand-in — not the
+  firmware's own stop-on-signal-loss path.
 - **No RTK / NTRIP state machine.** The fix is always "RTK-fixed" quality, so
   the sim cannot exercise fix degradation, correction dropout, or the
   covariance-inflation path in `confidence_gate`.

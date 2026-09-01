@@ -10,6 +10,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -30,12 +31,20 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             'cmd_vel_out', default_value='/cmd_vel',
             description='Gated command output to the chassis.'),
+        DeclareLaunchArgument(
+            'use_sim_time', default_value='false',
+            description='Drive the re-gate timer and the scan/command '
+                        'timeouts off /clock. Must be true under Gazebo.'),
         Node(
             package='outdoor_patrol_safety',
             executable='scan_safety',
             name='scan_safety',
             output='screen',
-            parameters=[LaunchConfiguration('params_file')],
+            parameters=[
+                LaunchConfiguration('params_file'),
+                {'use_sim_time': ParameterValue(
+                    LaunchConfiguration('use_sim_time'), value_type=bool)},
+            ],
             remappings=[
                 ('scan', LaunchConfiguration('scan_topic')),
                 ('cmd_vel_in', LaunchConfiguration('cmd_vel_in')),

@@ -17,3 +17,12 @@ scan_safety:
     min_range_m: 0.06
     # If the newest scan is older than this, fail safe and block forward.
     scan_timeout_s: 0.5
+    # How long a raw command stays valid without being refreshed. Mirrors
+    # CMD_VEL_TIMEOUT_MS in the firmware's rc_failsafe.h: when it lapses the
+    # node emits one zero Twist and goes silent, so a dead command source
+    # stops the robot here AND still trips the firmware watchdog.
+    cmd_timeout_s: 0.5
+    # Re-gate period. The held command is re-checked against the freshest
+    # scan this often, which is what lets the brake stop a robot that is
+    # already moving (gating only on command arrival cannot).
+    control_period_s: 0.05
