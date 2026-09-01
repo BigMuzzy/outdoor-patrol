@@ -35,7 +35,22 @@ Visualization Manager:
       Collision Enabled: false
     - Class: rviz_default_plugins/LaserScan
       Enabled: true
-      Name: LaserScan
+      Name: Scan raw (grey, pre-filter)
+      Topic:
+        Value: /scan_raw
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (m): 0.02
+      Color Transformer: FlatColor
+      Color: 130; 130; 130
+      Position Transformer: XYZ
+      Decay Time: 0
+      Selectable: true
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Scan filtered (red, body masked)
       Topic:
         Value: /scan
         Depth: 5
