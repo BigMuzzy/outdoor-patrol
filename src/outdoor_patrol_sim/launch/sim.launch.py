@@ -162,6 +162,17 @@ def generate_launch_description() -> LaunchDescription:
                         'needed on a host with no /dev/dri render node; when '
                         'one exists, forcing it makes the headless EGL '
                         'context abort.'),
+        DeclareLaunchArgument(
+            'datum_params_file',
+            default_value=PathJoinSubstitution(
+                [sim_pkg, 'config', 'navsat_datum_sim.yaml']),
+            description='navsat_transform datum overlay. Defaults to the '
+                        'FIXED sim datum, which pins the map frame to the '
+                        'Gazebo world origin so /odometry/global can be '
+                        'compared against /odom_truth and so a recorded '
+                        'route replays in the next run. Point at '
+                        'outdoor_patrol_loc/config/datum_auto.yaml for the '
+                        'robot default (auto-datum on first fix).'),
     ]
 
     # Set explicitly rather than inherited: this dev container ships
@@ -293,7 +304,11 @@ def generate_launch_description() -> LaunchDescription:
                             PathJoinSubstitution(
                                 [loc_pkg, 'launch',
                                  'global_localization.launch.py'])),
-                        launch_arguments={'use_sim_time': 'true'}.items(),
+                        launch_arguments={
+                            'use_sim_time': 'true',
+                            'datum_params_file': LaunchConfiguration(
+                                'datum_params_file'),
+                        }.items(),
                     )],
                 )],
             )],

@@ -15,7 +15,10 @@ Not started here (run separately): the UM982 driver + NTRIP. `fix_topic`
 defaults to the gated fix; override to the raw driver fix to bypass the gate.
 
 TBD until measured / decided: the heading `yaw_offset` (heading_to_imu params)
-- integration plan items 2/3. Datum is auto-on-first-fix (config/navsat.yaml).
+- integration plan items 2/3. Datum defaults to auto-on-first-fix
+(config/datum_auto.yaml); pass `datum_params_file:=<file>` to pin a fixed
+per-site origin instead, which is what makes recorded routes comparable
+across sessions.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -30,6 +33,7 @@ def generate_launch_description() -> LaunchDescription:
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     fix_topic = LaunchConfiguration('fix_topic')
+    datum_params_file = LaunchConfiguration('datum_params_file')
 
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
@@ -42,6 +46,16 @@ def generate_launch_description() -> LaunchDescription:
         description='NavSatFix input for navsat_transform. Defaults to the '
                     'confidence_gate output; set to /um982_driver/fix to '
                     'bypass the gate.',
+    )
+    datum_params_arg = DeclareLaunchArgument(
+        'datum_params_file',
+        default_value=PathJoinSubstitution([pkg, 'config',
+                                            'datum_auto.yaml']),
+        description='Datum-policy overlay layered on top of navsat.yaml. The '
+                    'default auto-sets the map origin on the first fix; point '
+                    'this at a file with wait_for_datum + datum to pin the '
+                    'origin to a fixed per-site value, which is what makes '
+                    'saved routes comparable across sessions.',
     )
 
     # M1 local EKF (odom -> base_link), reused unchanged.
@@ -83,6 +97,7 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
         parameters=[
             PathJoinSubstitution([pkg, 'config', 'navsat.yaml']),
+            datum_params_file,
             {'use_sim_time': use_sim_time},
         ],
         remappings=[
@@ -111,6 +126,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         use_sim_time_arg,
         fix_topic_arg,
+        datum_params_arg,
         local_ekf,
         heading_to_imu,
         confidence_gate,

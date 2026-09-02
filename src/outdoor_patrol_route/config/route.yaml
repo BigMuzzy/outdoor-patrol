@@ -1,0 +1,128 @@
+# Teach-and-repeat parameters. Loaded by launch/route_record.launch.py and
+# launch/route_follow.launch.py; see doc/eng/plans/issue-8-teach-and-repeat.md.
+
+route_recorder:
+  ros__parameters:
+    # Which correction path produces the base_link position.
+    #   odometry_global - /odometry/global (navsat_transform already applied
+    #                     the gnss_link -> base_link lever arm via TF)
+    #   fix_lever_arm   - gated fix minus R(yaw) * antenna offset, computed
+    #                     here; independent cross-check of the above
+    #   raw_antenna     - gated fix, UNCORRECTED. Not a base_link route; the
+    #                     follower refuses it. Control for the differential
+    #                     test only.
+    source: odometry_global
+    odom_topic: /odometry/global
+    fix_topic: /gnss/fix_gated
+    output_path: route.yaml
+
+    # Displacement OR yaw trigger. Time-based sampling under-samples corners
+    # and over-samples straights, so neither is a period.
+    sample_dist_m: 1.0
+    sample_yaw_deg: 5.0
+
+    # `loop` is a request, not a fact: the recorder measures the gap between
+    # the first and last station and writes loop: false if the pass did not
+    # actually come back.
+    loop: true
+    loop_closure_tolerance_m: 3.0
+
+    # Corridor geometry written into the file. Half-width of the driveable
+    # lane either side of the recorded centerline, then the shoulder beyond
+    # it. Per-sample shoulder fields exist so multi-pass measurement can
+    # populate them later without a format change (issue #8, review Q2).
+    lane_half_width_m: 2.0
+    shoulder_left_m: 1.0
+    shoulder_right_m: 1.0
+
+    # Samples below this fix class are RECORDED AND FLAGGED, never dropped --
+    # a dropped sample is the only evidence that a stretch of route is
+    # GNSS-marginal (issue #8, review Q5).
+    warn_below_fix: fixed
+
+    base_frame: base_link
+    antenna_frame: gnss_link
+    toll_service: /toLL
+    toll_timeout_s: 5.0
+
+route_follower:
+  ros__parameters:
+    route_path: ''
+    odom_topic: /odometry/global
+    fix_topic: /gnss/fix_gated
+    scan_topic: /scan
+    # Publishes to the RAW command topic so the M3 forward brake stays in the
+    # loop underneath (outdoor_patrol_safety). Publishing to /cmd_vel would
+    # bypass it.
+    cmd_topic: /cmd_vel_raw
+    control_period_s: 0.05
+
+    # Pure pursuit. Look-ahead grows with speed: L = min + gain * v, clamped.
+    lookahead_min_m: 1.2
+    lookahead_gain_s: 1.5
+    lookahead_max_m: 4.0
+    nominal_speed_ms: 0.8
+    min_speed_ms: 0.25
+    max_angular_rads: 0.67
+    # Slow into curvature: v is scaled down where the path bends, so the
+    # look-ahead point does not demand more yaw rate than the chassis has.
+    curvature_speed_gain: 1.0
+    # Non-loop routes only: how close to the last station counts as arrived.
+    goal_tolerance_m: 1.0
+
+    # --- Obstacle retreat -------------------------------------------------
+    # Fixed side by convention (issue #8, review Q3). 'left' is accepted but
+    # the sim validation only asserts 'right'.
+    retreat_side: right
+    # Hard limit on |lateral offset|: the outer edge of the shoulder. The
+    # follower stops rather than steering outside this.
+    corridor_half_width_m: 3.0
+    # Candidate offsets are tried in this step, smallest |d| first.
+    offset_step_m: 0.6
+    # Half-width swept when testing whether a candidate offset is clear:
+    # robot half-width (0.303 m) plus margin.
+    clearance_half_width_m: 0.55
+    # How far ahead along the path returns are considered. Deliberately much
+    # longer than scan_safety's 0.5 m stop distance -- by the time the brake
+    # fires there is no room left to steer, so the retreat needs its own
+    # trigger and the brake stays as the layer beneath it.
+    #
+    # This value and ramp_lateral_per_m below are a PAIR, and getting the pair
+    # wrong deadlocks the robot. Two distances have to fit inside the warning
+    # range: the ramp itself (|d| / ramp) and the vehicle's lag behind it.
+    # Measured on the sim road: the commanded offset is a step-free ramp, but
+    # the robot trails it by ~3 m, because pure pursuit steers toward a point
+    # 1.2-4 m ahead and the yaw rate is capped.
+    #
+    #   ramp 0.60 m/m -> 2.4 m of offset in 4.0 m of travel
+    #   + ~3 m of vehicle lag                = ~7 m
+    #   trigger 10.0 m                       -> ~3 m spare
+    #
+    # Measured failures with less: 6.0 m warning at 0.30 ramp needs 8.0 m and
+    # the robot stalls against the barrier -- scan_safety zeroes forward
+    # velocity at 0.5 m, and pure pursuit derives yaw rate from forward speed,
+    # so it can no longer steer out. 8.0 m at 0.45 clears the barrier but
+    # arrives 0.21 m short of the gap centre, leaving only 0.05 m of body
+    # clearance in a 1.2 m gap.
+    trigger_range_m: 10.0
+    # Consecutive clear control cycles required before easing back toward the
+    # lane. At 20 Hz, 20 cycles is 1 s. Without this the offset oscillates on
+    # a single dropped return.
+    resume_clear_cycles: 20
+    # Lateral metres per metre travelled while ramping. See trigger_range_m:
+    # 0.6 puts the full 2.4 m retreat inside 4 m of travel, a ~3.3 m radius
+    # arc -- comfortably above the chassis' 1.5 m minimum.
+    ramp_lateral_per_m: 0.6
+
+    # --- GNSS fault path --------------------------------------------------
+    # Above `slow`, speed is scaled down; above `stop`, or with no fix for
+    # `fix_timeout_s`, the follower stops. confidence_gate already inflates
+    # covariance on a degraded fix, so this is where that gets acted on.
+    sigma_slow_m: 0.10
+    sigma_stop_m: 0.50
+    fix_timeout_s: 2.0
+
+    # Publish an RViz MarkerArray of the centerline, corridor edges and the
+    # active look-ahead point. Stands in for the deferred route_to_map
+    # occupancy grid (issue #8, review Q4).
+    publish_markers: true

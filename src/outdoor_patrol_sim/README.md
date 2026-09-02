@@ -82,6 +82,55 @@ speed clamps all still live in
 adds only the things that exist solely in simulation: a frictionless front
 caster, wheel friction, the gz system plugins, and the three sensors.
 
+## The patrol road, and the teach-and-repeat validation
+
+`patrol_yard.sdf` is the ad-hoc world for driving around in. The **patrol
+road** is the scored one, and it is generated rather than hand-written:
+
+```bash
+python3 scripts/gen_patrol_road.py          # regenerate
+python3 scripts/gen_patrol_road.py --check  # fail if the committed files drifted
+```
+
+One definition produces three artefacts, which is the point — the world, the
+teach-pass driver and the scorer cannot disagree about where the road is,
+because none of them owns the number:
+
+| File | What it is |
+|---|---|
+| `worlds/patrol_road.sdf` | 100 m rounded-square loop, clear |
+| `worlds/patrol_road_obstacles.sdf` | the same road plus three lane barriers |
+| `worlds/patrol_road_centerline.yaml` | the ground-truth centerline and barrier geometry |
+
+The road is a 4 m lane (±2 m of the centerline) with a 1 m shoulder each side,
+corner radius 5 m, spawn point `x:=-8.573 y:=-13.573 yaw:=0.0` (station 0,
+heading east). The surface is **visual only, with no collision geometry** — a
+collision box at the road edge would put returns into `/scan` and trip the
+forward brake on the road itself.
+
+Each barrier spans the lane *and* the left shoulder, leaving a 1.20 m gap on
+the right shoulder only. A 0.605 m wide robot fits with 0.298 m to spare, and a
+left-side dodge is geometrically impossible, so "it went around on the right"
+is a measurable fact rather than a judgement call.
+
+`sim_route_driver` drives that centerline off `/odom_truth` so a teach pass is
+repeatable instead of hand-driven. It has no obstacle avoidance of its own, so
+teach on the clear world.
+
+The whole teach-and-repeat validation runs from one script:
+
+```bash
+./scripts/run_validation.sh /tmp/validation          # all five runs, ~12 min
+./scripts/run_validation.sh /tmp/validation r4       # just R4
+```
+
+Only one Gazebo server may run at a time — two of them share gz-transport topic
+names and silently steal each other's `/cmd_vel` and `/scan`. The harness
+spawns every child into its own process group, tears down by group, and refuses
+to start if it finds a server or stack nodes already running. See
+[doc/eng/plans/issue-8-teach-and-repeat.md](../../doc/eng/plans/issue-8-teach-and-repeat.md)
+for what each run proves and the measured results.
+
 ## The two shim nodes, and why they are not optional
 
 Both exist because a gz message is missing a field that the localization stack

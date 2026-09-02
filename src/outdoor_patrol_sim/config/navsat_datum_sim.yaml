@@ -1,0 +1,17 @@
+# Fixed datum for the simulated site — layered after outdoor_patrol_loc's
+# config/navsat.yaml + this file via `datum_params_file`.
+#
+# The lat/lon MUST match the <spherical_coordinates> block of the world SDF
+# (patrol_yard.sdf and patrol_road*.sdf share one datum, and
+# scripts/gen_patrol_road.py writes the same value into
+# worlds/patrol_road_centerline.yaml). With them equal and the datum yaw at
+# 0, the ROS `map` frame coincides with the Gazebo world frame, which is what
+# makes /odometry/global directly comparable against /odom_truth — and what
+# makes a route recorded in one run replayable in the next.
+#
+# Third element is the datum yaw in radians. 0.0 leaves `map` ENU-aligned,
+# matching <world_frame_orientation>ENU</world_frame_orientation>.
+navsat_transform:
+  ros__parameters:
+    wait_for_datum: true
+    datum: [-41.286460, 174.776236, 0.0]

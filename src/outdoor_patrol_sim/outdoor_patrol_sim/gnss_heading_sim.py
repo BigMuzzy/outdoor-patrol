@@ -102,6 +102,16 @@ class GnssSim(Node):
             % (math.sqrt(self._h_var), math.degrees(self._yaw_stddev)))
 
     def _on_fix(self, msg: NavSatFix) -> None:
+        # Re-read every fix rather than caching: that makes the sigma
+        # settable at runtime (`ros2 param set /gnss_sim horizontal_stddev_m
+        # 0.8`), which is how the GNSS fault path is exercised without
+        # restarting the world.
+        self._h_stddev = float(
+            self.get_parameter('horizontal_stddev_m').value)
+        self._v_stddev = float(self.get_parameter('vertical_stddev_m').value)
+        self._h_var = self._h_stddev ** 2
+        self._v_var = self._v_stddev ** 2
+
         # Metres -> degrees at this latitude (WGS84 meridian / parallel arc
         # lengths; a spherical approximation is well inside the noise here).
         lat_m_per_deg = _EARTH_RADIUS_M * math.pi / 180.0

@@ -2,7 +2,7 @@ from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = 'outdoor_patrol_sim'
+package_name = 'outdoor_patrol_route'
 
 setup(
     name=package_name,
@@ -13,26 +13,19 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
-        ('share/' + package_name + '/urdf', glob('urdf/*.urdf.xacro')),
-        ('share/' + package_name + '/worlds', glob('worlds/*.sdf')),
-        # Ground-truth centerline that goes with patrol_road*.sdf; read by the
-        # teach-pass driver and the route scorer.
-        ('share/' + package_name + '/worlds', glob('worlds/*.yaml')),
         ('share/' + package_name + '/config', glob('config/*.yaml')),
-        ('share/' + package_name + '/config', glob('config/*.rviz')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='Outdoor Patrol Team',
     maintainer_email='dev@example.com',
-    description='Gazebo Harmonic simulation of the outdoor patrol robot.',
+    description='GNSS teach-and-repeat route recording and following.',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'gnss_heading_sim = outdoor_patrol_sim.gnss_heading_sim:main',
-            'odom_sim = outdoor_patrol_sim.odom_sim:main',
-            'sim_route_driver = outdoor_patrol_sim.sim_route_driver:main',
+            'route_recorder = outdoor_patrol_route.route_recorder:main',
+            'route_follower = outdoor_patrol_route.route_follower:main',
         ],
     },
 )
