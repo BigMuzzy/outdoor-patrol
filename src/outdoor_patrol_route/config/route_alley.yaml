@@ -1,0 +1,111 @@
+# Teach-and-repeat parameters for a NARROW corridor -- an alley, a path
+# between buildings, anywhere the drivable width is a few metres and there are
+# walls rather than shoulders.
+#
+# Tuned for a 4 m wide alley. The defaults in route.yaml assume the 6 m sim
+# road and WILL STEER INTO A WALL here: they allow a 2.4 m lateral offset,
+# which puts the robot's outer edge 2.70 m from the centerline -- 0.70 m past
+# a wall that is 2.00 m away.
+#
+# Geometry, for a 4 m alley driven down the middle (0.605 m wide robot):
+#
+#   wall                                                            wall
+#   -2.00 ------------------------- 0.00 ------------------------- +2.00
+#           |<-- max retreat -1.2 -->|
+#           robot edge at -1.502, so 0.498 m of wall gap remains
+#
+# corridor_half_width_m 1.8 - clearance_half_width_m 0.55 = 1.25, so the
+# candidate offsets are 0.0, -0.6 and -1.2. Nothing the follower can command
+# puts the robot closer than ~0.5 m to a wall.
+#
+# Re-derive these for a different width before driving it. The rule is:
+#
+#   corridor_half_width_m <= (alley_width / 2) - robot_half_width - 0.45
+#
+# and then check trigger_range_m >= |max offset| / ramp_lateral_per_m + 3 m of
+# vehicle lag, or the robot arrives at the obstacle still out of position and
+# the forward brake stalls it (see route_follower's start-up check).
+
+# Keyed `/**` rather than `route_recorder` ON PURPOSE. The differential test
+# needs two recorders running on the SAME drive, which means two node names
+# (rec_corrected, rec_control) -- and a section keyed by node name silently
+# does not apply to a renamed node. Measured: with a `route_recorder:` key,
+# `ros2 run ... -r __node:=rec_corrected --params-file this` came up with
+# lane_half_width_m 2.0, the built-in default, not the 1.0 set here. No error,
+# no warning. `/**` applies to whatever the node is called.
+#
+# Keys here that route_follower does not declare are ignored by it, and the
+# few both nodes declare are set to the same value in both sections.
+/**:
+  ros__parameters:
+    source: odometry_global
+    odom_topic: /odometry/global
+    fix_topic: /gnss/fix_gated
+    output_path: route.yaml
+
+    sample_dist_m: 1.0
+    sample_yaw_deg: 5.0
+
+    # An alley is a there-and-back, not a circuit.
+    loop: false
+    loop_closure_tolerance_m: 3.0
+
+    # 2 m of lane down the middle, 0.8 m of "shoulder" either side before the
+    # wall. There is no real shoulder here -- this is the width the follower
+    # is allowed to use, and it is what the RViz corridor markers draw.
+    lane_half_width_m: 1.0
+    shoulder_left_m: 0.8
+    shoulder_right_m: 0.8
+
+    warn_below_fix: fixed
+
+    base_frame: base_link
+    antenna_frame: gnss_link
+    toll_service: /toLL
+    toll_timeout_s: 5.0
+
+route_follower:
+  ros__parameters:
+    # No route_path default on purpose. An empty string here is a
+    # REAL value that beats a later -p override in some argument
+    # orders, so shipping one turns a working command line into
+    # 'route_path is required'. Always pass it explicitly.
+    odom_topic: /odometry/global
+    fix_topic: /gnss/fix_gated
+    scan_topic: /scan
+    cmd_topic: /cmd_vel_raw
+    control_period_s: 0.05
+
+    # Slower than the sim's 0.8 m/s: this is a first outdoor run between two
+    # walls, and a shorter look-ahead tracks a narrow corridor more tightly.
+    nominal_speed_ms: 0.4
+    min_speed_ms: 0.15
+    lookahead_min_m: 1.0
+    lookahead_gain_s: 1.5
+    lookahead_max_m: 2.5
+    max_angular_rads: 0.67
+    curvature_speed_gain: 1.0
+    goal_tolerance_m: 1.0
+    laps: 1.0
+
+    retreat_side: right
+    # THE important number here -- see the header. 1.8 keeps the widest
+    # commanded offset 0.5 m clear of a wall in a 4 m alley.
+    corridor_half_width_m: 1.8
+    offset_step_m: 0.6
+    clearance_half_width_m: 0.55
+    # 1.2 m of offset at 0.6 m/m needs 2 m of ramp, plus ~3 m of vehicle lag
+    # = 5 m. 8 m of warning leaves 3 m of margin.
+    trigger_range_m: 8.0
+    resume_clear_cycles: 20
+    ramp_lateral_per_m: 0.6
+
+    # Unchanged from the sim defaults, deliberately. Alley walls restrict sky
+    # view and reflect, so a degraded fix is LIKELY here -- that is exactly
+    # when these must not be relaxed. If the robot keeps stopping, the answer
+    # is that the site has poor RTK, not that the threshold is wrong.
+    sigma_slow_m: 0.10
+    sigma_stop_m: 0.50
+    fix_timeout_s: 2.0
+
+    publish_markers: true

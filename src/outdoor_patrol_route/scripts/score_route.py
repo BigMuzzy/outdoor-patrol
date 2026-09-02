@@ -238,10 +238,91 @@ def report(results, max_lateral: float, max_lateral_rms: float,
     return 0
 
 
+def compare_routes(corrected_path: str, control_path: str,
+                   expected_m: float, tolerance_m: float) -> int:
+    """Differential test WITHOUT ground truth, for field sites.
+
+    In simulation both recordings are scored against the true centerline. In
+    a field there is no true centerline, so instead measure the two tracks
+    against EACH OTHER: the uncorrected one should sit a known distance to the
+    RIGHT of the corrected one, because that is where the antenna is bolted.
+
+    Sign matters and is the real content of the test. A separation of the
+    right size but the wrong sign means the lever arm is being ADDED instead
+    of subtracted, which no magnitude-only check would catch.
+    """
+    _, corrected_samples, corrected = load_route(corrected_path)
+    _, _, control = load_route(control_path)
+
+    # Use the RECORDED yaw as the heading, not a finite difference of the
+    # track: it is the same heading the lever arm was rotated by, and it does
+    # not degrade where samples bunch up on a turn.
+    heading = np.array([s['yaw'] for s in corrected_samples])
+    normal = np.stack([-np.sin(heading), np.cos(heading)], axis=1)
+
+    # Both tracks were recorded on the same drive, so pair each control
+    # sample with its nearest point on the corrected track and measure the
+    # offset along that track's local normal.
+
+    dx = control[:, 0][:, None] - corrected[None, :, 0]
+    dy = control[:, 1][:, None] - corrected[None, :, 1]
+    nearest = np.argmin(dx * dx + dy * dy, axis=1)
+    rel = control - corrected[nearest]
+    lateral = np.einsum('ij,ij->i', rel, normal[nearest])
+
+    mean = float(np.mean(lateral))
+    print('Differential test (no ground truth needed)')
+    print('  corrected : %s (%d samples)'
+          % (os.path.basename(corrected_path), len(corrected)))
+    print('  control   : %s (%d samples)'
+          % (os.path.basename(control_path), len(control)))
+    print('  the control track sits %+.3f m from the corrected one'
+          % mean)
+    print('    (+ is left, - is right; the antenna is mounted RIGHT, so this '
+          'should be about %+.2f m)' % -expected_m)
+    print('  spread    : %.3f m std' % float(np.std(lateral)))
+    print()
+
+    if abs(mean) < expected_m / 3.0:
+        print('FAIL')
+        print('  - the two tracks sit on top of each other (%.3f m apart). '
+              'The control is not an uncorrected recording, or the '
+              'correction never ran -- either way this test proves nothing.'
+              % abs(mean))
+        return 1
+    if mean > 0:
+        print('FAIL')
+        print('  - the control is to the LEFT of the corrected track. The '
+              'lever arm is being applied with the wrong sign -- the '
+              'correction is making the error worse, not better.')
+        return 1
+    if abs(abs(mean) - expected_m) > tolerance_m:
+        print('FAIL')
+        print('  - separation %.3f m is not the expected %.2f m +/- %.2f m. '
+              'Either the correction is not running, or the antenna is not '
+              'mounted where chassis.yaml says it is.'
+              % (abs(mean), expected_m, tolerance_m))
+        return 1
+    print('PASS: the two recordings differ by the antenna offset, in the '
+          'right direction, so the base_link correction is live.')
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--centerline', required=True)
-    parser.add_argument('--route', action='append', required=True)
+    parser.add_argument('--centerline',
+                        help='Ground-truth centerline (simulation only).')
+    parser.add_argument('--route', action='append',
+                        help='Route file to score against --centerline.')
+    parser.add_argument('--compare', nargs=2,
+                        metavar=('CORRECTED', 'CONTROL'),
+                        help='Field mode: compare a corrected recording '
+                             'against a raw_antenna control recorded on the '
+                             'same drive. Needs no ground truth.')
+    parser.add_argument('--expected-offset', type=float, default=0.42,
+                        help='Lateral antenna offset to expect in --compare '
+                             'mode (chassis.yaml gnss_link y).')
+    parser.add_argument('--offset-tolerance', type=float, default=0.12)
     parser.add_argument('--max-lateral', type=float,
                         default=DEFAULT_MAX_LATERAL_M)
     parser.add_argument('--max-lateral-rms', type=float,
@@ -250,6 +331,13 @@ def main(argv=None) -> int:
                         default=DEFAULT_MIN_CONTROL_OFFSET_M)
     parser.add_argument('--json', help='also write the raw numbers here')
     args = parser.parse_args(argv)
+
+    if args.compare:
+        return compare_routes(args.compare[0], args.compare[1],
+                              args.expected_offset, args.offset_tolerance)
+
+    if not args.centerline or not args.route:
+        parser.error('need --centerline and --route, or --compare')
 
     centerline = Centerline(args.centerline)
     results = [score(path, centerline, args.max_lateral,

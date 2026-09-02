@@ -47,7 +47,10 @@ route_recorder:
 
 route_follower:
   ros__parameters:
-    route_path: ''
+    # No route_path default on purpose. An empty string here is a
+    # REAL value that beats a later -p override in some argument
+    # orders, so shipping one turns a working command line into
+    # 'route_path is required'. Always pass it explicitly.
     odom_topic: /odometry/global
     fix_topic: /gnss/fix_gated
     scan_topic: /scan

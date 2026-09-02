@@ -177,3 +177,31 @@ Watch the orange sphere swing right as a barrier comes up. That displacement
 Treat a GUI run as a look, not as the measurement: real-time factor drops to
 roughly 0.4, so R4 takes about seven minutes rather than three. The harness
 scales its own timeouts to match.
+
+## Field sites
+
+[config/route_alley.yaml](config/route_alley.yaml) is a narrow-corridor
+profile: a 4 m alley, walls instead of shoulders, 1.2 m maximum retreat. The
+defaults in `route.yaml` assume the 6 m sim road and would steer 0.70 m into a
+wall there. Derive your own before driving a new site:
+
+```
+corridor_half_width_m  <=  (width / 2) - robot_half_width - 0.45
+trigger_range_m        >=  |max offset| / ramp_lateral_per_m + 3   # vehicle lag
+```
+
+The follower prints what it derived at start-up; read that line every run.
+
+Outdoors there is no ground truth, so the base_link differential test compares
+the two recordings against each other instead:
+
+```bash
+score_route.py --compare alley_corrected.yaml alley_control.yaml
+```
+
+The uncorrected track should sit ~0.42 m to the *right* of the corrected one.
+The sign is the point: a separation of the right size but the wrong sign means
+the lever arm is being added rather than subtracted.
+
+Step-by-step field procedure:
+[doc/eng/plans/field-validation-alley.md](../../doc/eng/plans/field-validation-alley.md).
