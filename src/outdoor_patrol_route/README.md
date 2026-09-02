@@ -142,3 +142,38 @@ Covers the schema round-trip and its rejection paths, and the path geometry
 against a closed-form circle. The end-to-end behaviour is validated in
 simulation by
 [`run_validation.sh`](../outdoor_patrol_sim/scripts/run_validation.sh).
+
+## Watching a run
+
+The validation harness is headless by default, because rendering competes with
+physics and the numbers should come from a run that was not being drawn. To
+watch one:
+
+```bash
+GUI=rviz ./src/outdoor_patrol_sim/scripts/run_validation.sh /tmp/val r4  # lightest
+GUI=gz   ./src/outdoor_patrol_sim/scripts/run_validation.sh /tmp/val r4
+GUI=1    ./src/outdoor_patrol_sim/scripts/run_validation.sh /tmp/val r4  # both
+```
+
+`GUI=rviz` is usually what you want: it is far lighter than Gazebo's renderer
+and it is the view that shows the corridor. Needs `$DISPLAY` or a Wayland
+socket; the harness checks and refuses early if neither is set.
+
+The RViz preset is [config/route.rviz](config/route.rviz):
+
+| What you see | Meaning |
+|---|---|
+| green line | recorded centerline being followed |
+| white lines | lane edges |
+| orange lines | corridor edges — the follower will not steer outside these |
+| orange sphere | the live look-ahead point |
+| green arrows | Gazebo ground truth (sim only) |
+| orange arrows | global EKF estimate; the gap to green is localization error |
+| yellow points | `/scan` — the barrier returns that trigger the retreat |
+
+Watch the orange sphere swing right as a barrier comes up. That displacement
+*is* the retreat — there is no second control mode to see.
+
+Treat a GUI run as a look, not as the measurement: real-time factor drops to
+roughly 0.4, so R4 takes about seven minutes rather than three. The harness
+scales its own timeouts to match.

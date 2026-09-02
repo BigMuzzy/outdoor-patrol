@@ -16,6 +16,14 @@
 #   ./run_validation.sh /tmp/val            # everything
 #   ./run_validation.sh /tmp/val r4         # just R4, reusing an earlier route
 #
+#   GUI=1 ./run_validation.sh /tmp/val r4   # + Gazebo GUI and RViz
+#   GUI=rviz ./run_validation.sh /tmp/val   # RViz only (much lighter)
+#   GUI=gz   ./run_validation.sh /tmp/val   # Gazebo GUI only
+#
+# GUI needs a display ($DISPLAY or a Wayland socket). It slows the sim down,
+# so the pass/fail numbers still come from a headless run -- watch with the
+# GUI, score without it.
+#
 # Every child is spawned into its OWN process group and torn down by group.
 # Signalling `ros2 launch` or `ros2 run` alone does not reliably reach what
 # they spawned, and a surviving Gazebo server or bridge silently shares
@@ -54,6 +62,43 @@ set -u
 FAILED=0
 SIM_PGID=""
 OWN_PGID="$(ps -o pgid= -p $$ | tr -d ' ')"
+
+# GUI= unset|0  headless (default, and what the numbers are measured on)
+#      1|all    Gazebo GUI + RViz
+#      gz       Gazebo GUI only
+#      rviz     RViz only -- much lighter, and shows the corridor markers,
+#               which is usually what you actually want to watch
+GUI="${GUI:-0}"
+case "$GUI" in
+  1|all|true)  GZ_GUI=true;  RVIZ_GUI=true ;;
+  gz|gazebo)   GZ_GUI=true;  RVIZ_GUI=false ;;
+  rviz)        GZ_GUI=false; RVIZ_GUI=true ;;
+  *)           GZ_GUI=false; RVIZ_GUI=false ;;
+esac
+
+if [ "$GZ_GUI" = true ] || [ "$RVIZ_GUI" = true ]; then
+  if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "GUI requested but neither DISPLAY nor WAYLAND_DISPLAY is set." >&2
+    exit 1
+  fi
+  echo "GUI mode: gazebo=$GZ_GUI rviz=$RVIZ_GUI on ${DISPLAY:-$WAYLAND_DISPLAY}"
+  echo "Rendering competes with physics -- treat these runs as a look, not"
+  echo "as the measurement."
+  # Everything downstream waits in WALL time while the robot advances in SIM
+  # time, so a lower real-time factor has to buy proportionally longer
+  # patience or the harness gives up on a run that is merely slow.
+  READY_TIMEOUT=450
+  FLAG_TIMEOUT=1800
+  # Each readiness probe is a fresh `ros2 topic echo`, and most of its cost is
+  # process start-up plus discovery, not waiting for a message. With Gazebo
+  # and RViz competing for the CPU that start-up alone blows past 3 s, so the
+  # probe times out forever on a topic that is publishing perfectly well.
+  PROBE_TIMEOUT=15
+else
+  READY_TIMEOUT=150
+  FLAG_TIMEOUT=500
+  PROBE_TIMEOUT=3
+fi
 
 log()  { printf '\n=== %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
@@ -104,16 +149,40 @@ signal_group() {    # pgid, signal -- send only, do not escalate
 }
 
 stack_nodes() {
-  timeout 10 ros2 node list 2>/dev/null | grep -E "$STACK_NODES" | tr '\n' ' '
+  timeout "$((PROBE_TIMEOUT * 2))" ros2 node list 2>/dev/null \
+      | grep -E "$STACK_NODES" | tr '\n' ' '
+}
+
+reap_stragglers() {
+  # `ros2 launch` starts some of its children in their own sessions, so a
+  # process-group kill can miss them -- and a surviving bridge or EKF poisons
+  # the next run. Find what is left by executable and end it explicitly.
+  local pattern pids pid
+  pattern='gz sim|parameter_bridge|ekf_node|navsat_transform_node'
+  pattern="$pattern"'|install/lib/outdoor_patrol|robot_state_publisher'
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  [ -z "$pids" ] && return 0
+  note "reaping stragglers: $(echo "$pids" | tr '\n' ' ')"
+  for pid in $pids; do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+  sleep 2
 }
 
 wait_for_quiet() {
   # Both the process table and the ROS graph have to settle: discovery keeps
   # a dead node listed for a few seconds after its process is gone.
-  for _ in $(seq 1 45); do
+  for _ in $(seq 1 20); do
     if ! pgrep -f 'gz sim' > /dev/null 2>&1 && [ -z "$(stack_nodes)" ]; then
       return 0
     fi
+    sleep 1
+  done
+  # Still here after 20 s: something escaped the group kill. Take it out
+  # rather than starting the next run on top of it.
+  reap_stragglers
+  for _ in $(seq 1 20); do
+    [ -z "$(stack_nodes)" ] && return 0
     sleep 1
   done
   note "WARNING: the previous stack has not fully gone away"
@@ -125,7 +194,7 @@ stop_sim() {
   SIM_PGID=""
   wait_for_quiet
 }
-trap 'stop_group "$SIM_PGID"' EXIT
+trap 'stop_group "$SIM_PGID"; reap_stragglers' EXIT
 
 start_sim() {
   local world="$1" log_file="$2"
@@ -140,7 +209,9 @@ start_sim() {
   SIM_PGID="$(spawn_group sim "$log_file" \
       ros2 launch outdoor_patrol_sim sim.launch.py \
       world:="$SHARE/worlds/$world" \
-      x:="$START_X" y:="$START_Y" yaw:="$START_YAW")"
+      x:="$START_X" y:="$START_Y" yaw:="$START_YAW" \
+      gui:="$GZ_GUI" use_rviz:="$RVIZ_GUI" \
+      rviz_config:="$ROUTE_SHARE/config/route.rviz")"
   if [ -z "$SIM_PGID" ]; then
     echo "    ERROR: the sim never reported its process group" >&2
     return 1
@@ -148,8 +219,9 @@ start_sim() {
 
   # Ready means the global EKF is publishing, not merely that gz is up.
   local waited=0
-  while [ "$waited" -lt 150 ]; do
-    if timeout 3 ros2 topic echo /odometry/global --once > /dev/null 2>&1; then
+  while [ "$waited" -lt "$READY_TIMEOUT" ]; do
+    if timeout "$PROBE_TIMEOUT" ros2 topic echo /odometry/global --once \
+        > /dev/null 2>&1; then
       note "localization live after ${waited}s"
       return 0
     fi
@@ -163,7 +235,7 @@ start_sim() {
 wait_for_flag() {   # topic, timeout seconds
   local topic="$1" limit="$2" waited=0
   while [ "$waited" -lt "$limit" ]; do
-    if timeout 3 ros2 topic echo "$topic" --once 2>/dev/null \
+    if timeout "$PROBE_TIMEOUT" ros2 topic echo "$topic" --once 2>/dev/null \
         | grep -q 'data: true'; then
       return 0
     fi
@@ -198,7 +270,7 @@ run_teach() {
       -p centerline_path:="$CENTERLINE" \
       -p speed_ms:=0.8 -p laps:=1.0)"
 
-  wait_for_flag /sim_route_driver/finished 400 || FAILED=1
+  wait_for_flag /sim_route_driver/finished "$FLAG_TIMEOUT" || FAILED=1
   stop_group "$driver"
 
   for source in odometry_global fix_lever_arm raw_antenna; do
@@ -254,7 +326,7 @@ follow_run() {      # label, world, bag name, extra scorer args...
         >> "$OUTDIR/follower_$label.log" 2>&1
     sleep 45
   else
-    wait_for_flag /route_follower/finished 500 || FAILED=1
+    wait_for_flag /route_follower/finished "$FLAG_TIMEOUT" || FAILED=1
   fi
 
   stop_group "$follower"

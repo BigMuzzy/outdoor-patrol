@@ -1,0 +1,152 @@
+# RViz preset for teach-and-repeat runs (outdoor_patrol_route).
+#
+# Built for watching a REPEAT pass. Fixed frame is `map`, which for sim runs
+# coincides with the Gazebo world frame because the datum is pinned
+# (outdoor_patrol_sim/config/navsat_datum_sim.yaml) -- so the corridor markers,
+# ground truth and the EKF estimate all overlay correctly.
+#
+# What to look for:
+#
+#   green line      recorded centerline, the path being followed
+#   white lines     lane edges (+/- lane_half_width_m)
+#   orange lines    corridor edges -- the follower will not steer outside these
+#   orange sphere   the live look-ahead point. Watch it swing to the RIGHT of
+#                   the centerline as a barrier comes up: that displacement IS
+#                   the retreat, there is no second control mode.
+#   green arrows    Gazebo ground truth (/odom_truth, sim only)
+#   orange arrows   the global EKF estimate. The gap between green and orange
+#                   is the localization error.
+#   yellow points   /scan. The barrier returns are what trigger the retreat.
+#
+# The camera starts pulled back far enough to see the whole 100 m loop.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 5
+      Plane Cell Count: 40
+      Color: 90; 90; 90
+    - Class: rviz_default_plugins/TF
+      Enabled: false
+      Name: TF
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Visual Enabled: true
+      Collision Enabled: false
+    # Centerline, lane edges, corridor edges and the live look-ahead point.
+    # This is the operator view that stands in for the deferred route_to_map
+    # occupancy grid (issue #8, review question 4).
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: RouteCorridor
+      Topic:
+        Value: /route_follower/markers
+        Depth: 20
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Scan
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 4
+      Color: 255; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: GroundTruth
+      Topic:
+        Value: /odom_truth
+        Depth: 100
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Covariance:
+        Value: false
+      Keep: 4000
+      Position Tolerance: 0.25
+      Angle Tolerance: 0.5
+      Shape:
+        Value: Arrow
+        Color: 0; 255; 0
+        Alpha: 0.8
+        Shaft Length: 0.25
+        Shaft Radius: 0.03
+        Head Length: 0.1
+        Head Radius: 0.06
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: GlobalEKF
+      Topic:
+        Value: /odometry/global
+        Depth: 100
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Covariance:
+        Value: false
+      Keep: 4000
+      Position Tolerance: 0.25
+      Angle Tolerance: 0.5
+      Shape:
+        Value: Arrow
+        Color: 255; 85; 0
+        Alpha: 1.0
+        Shaft Length: 0.25
+        Shaft Radius: 0.03
+        Head Length: 0.1
+        Head Radius: 0.06
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/FocusCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      # Far enough back to hold the whole 27 m x 27 m loop in frame.
+      Distance: 55.0
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Whole loop
+      Pitch: 1.1
+      Yaw: 1.57
+    Saved:
+      - Class: rviz_default_plugins/Orbit
+        Distance: 12.0
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Name: Close follow
+        Pitch: 0.6
+        Yaw: 0.785
+Window Geometry:
+  Height: 900
+  Width: 1400
