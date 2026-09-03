@@ -136,6 +136,72 @@ not currently agree. A 4 cm fix drives at full speed; a 6 cm fix does not move.
    base and 7 cm at the edge of coverage. Your actual sigma depends on where
    you are in that range, not on the headline number.
 
+### Measuring it, and what the measurement can settle
+
+**Short answer: a measurement settles the question that matters, and only
+partly settles the one you asked.**
+
+The gate never sees the provider's datasheet. It tests the sigma the
+*receiver* reports, so "will it drive here" is directly measurable and is the
+real go/no-go. Whether the provider meant 1-sigma or 95% is a secondary
+curiosity.
+
+Record a static soak -- robot parked, not moving, on a mark you can find
+again:
+
+```bash
+ssh robot 'ros2 bag record -o /data/soak_day1 /um982_driver/fix'   # 15+ min
+scp -r robot:~/code/outdoor-patrol/deploy/data/soak_day1 /tmp/
+python3 src/outdoor_patrol_loc/scripts/analyse_gnss_soak.py --bag /tmp/soak_day1
+```
+
+Record the **raw** `/um982_driver/fix`, not `/gnss/fix_gated`: the gate
+inflates covariance x1000, which would corrupt the very number being measured.
+
+What it can and cannot conclude:
+
+| Question | Answerable? |
+|---|---|
+| Will the stack drive here? | **Yes** — directly, from the reported sigma |
+| Is the receiver's sigma honest? | **Yes** — reported vs actual scatter |
+| Is the spec 1-sigma or 95%? | **Probably** — they differ by 2.4x |
+| Is it 1-sigma or CEP? | **No** — only 1.18x apart, inside site variation |
+| What is the true accuracy? | **Not from one session** — see below |
+
+Two traps the script is built to avoid, both of which make a naive soak look
+better than it is:
+
+**Samples are not independent.** At 5 Hz a 30-minute soak is 9000 samples, but
+GNSS error decorrelates over roughly a minute, so it is worth about 30
+independent ones. The script estimates the autocorrelation time and widens its
+confidence interval to match. A tight sigma from a short soak is an
+impression, not a measurement.
+
+**One session measures precision, not accuracy.** Scatter is computed about
+that session's own mean, so a slowly-varying bias -- for RTK, several cm from
+multipath geometry and baseline drift -- is invisible: it looks like a
+constant, not like noise. Providers normally quote accuracy against truth, so
+comparing your session scatter to their number flatters them.
+
+The fix costs nothing but a second trip. Mark the spot, occupy it again on
+another day at a different time so the satellite geometry differs, and pass
+both:
+
+```bash
+analyse_gnss_soak.py --bag /tmp/soak_day1 --bag /tmp/soak_day2
+```
+
+The spread of the session *means* is the part a single session cannot show
+you, and for RTK it is usually the larger number. If you have a surveyed
+benchmark, `--truth EAST NORTH` gives real accuracy instead of a proxy.
+
+The script self-verifies against synthetic data with known sigma, known
+correlation time and a known injected bias:
+
+```bash
+python3 src/outdoor_patrol_loc/scripts/analyse_gnss_soak.py --self-test
+```
+
 Confirm what the receiver actually reports, once, before trusting either
 answer:
 
