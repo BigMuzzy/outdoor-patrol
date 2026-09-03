@@ -212,7 +212,10 @@ class RouteRecorder(Node):
     # -- inputs ------------------------------------------------------------
 
     def _on_fix(self, msg: NavSatFix) -> None:
-        self._sigma = math.sqrt(max(msg.position_covariance[0], 0.0))
+        # Worse axis, not just east: north was 1.7x worse than east in a
+        # measured soak here, so cov[0] alone understates what gets written
+        # into the route file as sigma_h.
+        self._sigma = route_file.horizontal_sigma(msg)
         self._fix_class = route_file.classify_fix(
             msg.status.status, self._sigma)
 
@@ -264,10 +267,13 @@ class RouteRecorder(Node):
     # -- sampling ----------------------------------------------------------
 
     def _consider(self, station: Station) -> None:
-        # A station recorded before the first fix has no quality information
-        # attached to it, which makes the whole file report a worst-fix of
-        # 'none'. Wait for the GNSS to say something first.
-        if station.fix == 'none' and not self._stations:
+        # Never record a station with no usable fix. Originally this only
+        # skipped stations BEFORE the first fix; it now skips them anywhere,
+        # because reading the raw driver topic means NO_FIX messages reach us
+        # instead of being dropped by confidence_gate, and a station recorded
+        # from one carries a meaningless position. A gap in the route is
+        # recoverable; a station in the wrong place is not.
+        if station.fix == 'none':
             return
 
         if self._stations:

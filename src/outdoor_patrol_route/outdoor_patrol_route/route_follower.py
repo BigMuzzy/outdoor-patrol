@@ -81,7 +81,17 @@ class RouteFollower(Node):
 
         self.declare_parameter('route_path', '')
         self.declare_parameter('odom_topic', '/odometry/global')
-        self.declare_parameter('fix_topic', '/gnss/fix_gated')
+        # RAW driver fix, deliberately NOT /gnss/fix_gated. The gate
+        # multiplies covariance by 1000 on a degraded fix, which is an
+        # EKF-weighting device rather than a quality metric: a 6 cm fix
+        # arrives here as 1.90 m, vaulting clean over sigma_slow/sigma_stop
+        # and turning a speed ramp into an on/off cliff. Reading the raw
+        # sigma is what makes those two thresholds mean anything.
+        #
+        # This only works because horizontal_sigma() returns inf for a
+        # NO_FIX or covariance-less message -- the gate used to drop those
+        # before the follower ever saw them.
+        self.declare_parameter('fix_topic', '/um982_driver/fix')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('cmd_topic', '/cmd_vel_raw')
         self.declare_parameter('control_period_s', 0.05)
@@ -325,7 +335,9 @@ class RouteFollower(Node):
         self._pose = (p.x, p.y, _yaw_of(msg.pose.pose.orientation))
 
     def _on_fix(self, msg: NavSatFix) -> None:
-        self._sigma = math.sqrt(max(msg.position_covariance[0], 0.0))
+        # Worse axis, and inf for an untrustworthy fix -- see
+        # route_file.horizontal_sigma for why both matter.
+        self._sigma = route_file.horizontal_sigma(msg)
         self._fix_stamp = self.get_clock().now()
 
     def _on_scan(self, msg: LaserScan) -> None:

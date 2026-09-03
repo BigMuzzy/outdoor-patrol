@@ -111,19 +111,22 @@ it.
 Anything above it is republished with covariance multiplied by
 `covariance_inflation` (1000).
 
-| Reported sigma | Gate | Follower sees | Behaviour |
-|---|---|---|---|
-| 3 cm | pass | 0.03 m | full speed |
-| 4 cm | pass | 0.04 m | full speed |
-| 5 cm | pass | 0.05 m | full speed |
-| **6 cm** | degraded | **1.90 m** | **dead stop** |
-| 7 cm | degraded | 2.21 m | dead stop |
+This USED to be a hard cliff. Before 2026-09-03 the follower read the
+*gated* sigma, so a 6 cm fix reached it as 0.06 x sqrt(1000) = 1.90 m --
+nearly 4x past `sigma_stop_m` -- and a 4 cm fix drove at full speed while a
+6 cm fix did not move at all. The slow band in between was unreachable.
 
-**There is no middle.** The x1000 inflation jumps clean over the follower's
-own slow band (`sigma_slow_m` 0.10 -> `sigma_stop_m` 0.50): 0.06 x sqrt(1000)
-= 1.90 m, nearly 4x past the stop threshold. So the intent -- degrade
-gracefully as the fix worsens -- and the implementation -- binary cliff -- do
-not currently agree. A 4 cm fix drives at full speed; a 6 cm fix does not move.
+| Reported sigma | EKF sees (gated) | Follower sees (raw) |
+|---|---|---|
+| 3 cm | 0.03 m | 0.03 m |
+| 5 cm | 0.05 m | 0.05 m |
+| 6 cm | 1.90 m, de-weighted | 0.06 m |
+| 15 cm | 4.74 m, de-weighted | 0.15 m |
+
+The follower now judges quality from the raw driver fix while the EKF keeps
+its x1000 protection, so both get the number they need and the speed ramp
+works. See [The 5 cm cliff, and what was done about
+it](#the-5-cm-cliff-and-what-was-done-about-it).
 
 ### Before changing anything, settle two questions
 
@@ -348,6 +351,141 @@ GST-measured sigma -- the honest value. Type 1 means the driver fell back to
 [um982_driver_node.cpp](../../../src/um982_driver/src/um982_driver_node.cpp)),
 which is an estimate, and on that path HDOP >= 3.0 alone trips the gate.
 
+### The 5 cm cliff, and what was done about it
+
+**Fixed by decoupling, 2026-09-03.** The cliff was not really a threshold
+problem -- it was two consumers being forced to share one number.
+
+`confidence_gate` multiplies covariance by 1000 on a degraded fix. That is an
+**EKF-weighting device**: it tells `ekf_global` to stop trusting GNSS so the
+map does not jump. It is not a quality metric. But `route_follower` was
+reading the same inflated number to decide how fast to drive, so a 6 cm fix
+reached it as 1.90 m -- clean over `sigma_slow_m` (0.10) and `sigma_stop_m`
+(0.50), which made the speed ramp unreachable and turned it into an on/off
+cliff.
+
+The fix is that the follower now judges quality from the **raw** driver fix,
+while the EKF keeps its x1000 protection unchanged. Both get the number they
+actually need, and `sigma_slow_m` / `sigma_stop_m` mean something for the
+first time.
+
+| Reported sigma | EKF sees (gated) | Follower sees (raw) | Speed |
+|---|---|---|---|
+| 0.02 m | 0.02 m | 0.02 m | full |
+| 0.05 m | 0.05 m | 0.05 m | full |
+| 0.08 m | 1.90 m (de-weighted) | 0.08 m | ~70% *(alley)* |
+| 0.15 m | 4.74 m (de-weighted) | 0.15 m | **stop** *(alley)* |
+| no fix | dropped | inf | **stop** |
+
+Alley thresholds are tighter than the open-field defaults, and derived from
+the measurement above rather than from feel: `sigma_slow_m: 0.05` is 2.4x the
+worst observed RTK-fixed sigma, so a healthy fix never trips it, and
+`sigma_stop_m: 0.15` stops well before a position error could eat the 0.50 m
+of wall clearance that a full retreat leaves.
+
+**Two real bugs surfaced while making this change**, both found by checking
+the code against the soak data rather than by reasoning:
+
+1. **The follower and recorder read only `position_covariance[0]` -- the
+   *east* variance.** `confidence_gate` tests `max(cov[0], cov[4])`. Satellite
+   geometry is not isotropic: measured here, north was **1.7x worse than
+   east** (0.017 m vs 0.010 m), so both nodes were understating fix error by
+   that factor and could have driven on a fix the gate considered degraded.
+   Now shared through `route_file.horizontal_sigma()`, so all three agree on
+   what "sigma" means.
+2. **An unknown covariance read as a *perfect* fix.** `position_covariance` is
+   all-zero when `position_covariance_type` is `UNKNOWN`, and `sqrt(0)` is
+   0.0 -- the best possible sigma, commanding full speed on a message
+   carrying no quality information at all. Same for `STATUS_NO_FIX`. Both now
+   return infinity, so callers fail safe. This was latent while the follower
+   read the gated topic (the gate drops those messages); it would have become
+   live the moment it read the raw one, which is exactly what this change
+   does.
+
+Ten tests in
+[`test_fix_quality.py`](../../../src/outdoor_patrol_route/test/test_fix_quality.py)
+cover it, using the measured soak numbers. Reverting the helper to its
+original one-line form fails seven of them.
+
+### Measuring it, and what the measurement can settle
+
+**Short answer: a measurement settles the question that matters, and only
+partly settles the one you asked.**
+
+The gate never sees the provider's datasheet. It tests the sigma the
+*receiver* reports, so "will it drive here" is directly measurable and is the
+real go/no-go. Whether the provider meant 1-sigma or 95% is a secondary
+curiosity.
+
+Record a static soak -- robot parked, not moving, on a mark you can find
+again:
+
+```bash
+ssh robot 'ros2 bag record -o /data/soak_day1 /um982_driver/fix'   # 15+ min
+scp -r robot:~/code/outdoor-patrol/deploy/data/soak_day1 /tmp/
+python3 src/outdoor_patrol_loc/scripts/analyse_gnss_soak.py --bag /tmp/soak_day1
+```
+
+Record the **raw** `/um982_driver/fix`, not `/gnss/fix_gated`: the gate
+inflates covariance x1000, which would corrupt the very number being measured.
+
+What it can and cannot conclude:
+
+| Question | Answerable? |
+|---|---|
+| Will the stack drive here? | **Yes** — directly, from the reported sigma |
+| Is the receiver's sigma honest? | **Yes** — reported vs actual scatter |
+| Is the spec 1-sigma or 95%? | **Probably** — they differ by 2.4x |
+| Is it 1-sigma or CEP? | **No** — only 1.18x apart, inside site variation |
+| What is the true accuracy? | **Not from one session** — see below |
+
+Two traps the script is built to avoid, both of which make a naive soak look
+better than it is:
+
+**Samples are not independent.** At 5 Hz a 30-minute soak is 9000 samples, but
+GNSS error decorrelates over roughly a minute, so it is worth about 30
+independent ones. The script estimates the autocorrelation time and widens its
+confidence interval to match. A tight sigma from a short soak is an
+impression, not a measurement.
+
+**One session measures precision, not accuracy.** Scatter is computed about
+that session's own mean, so a slowly-varying bias -- for RTK, several cm from
+multipath geometry and baseline drift -- is invisible: it looks like a
+constant, not like noise. Providers normally quote accuracy against truth, so
+comparing your session scatter to their number flatters them.
+
+The fix costs nothing but a second trip. Mark the spot, occupy it again on
+another day at a different time so the satellite geometry differs, and pass
+both:
+
+```bash
+analyse_gnss_soak.py --bag /tmp/soak_day1 --bag /tmp/soak_day2
+```
+
+The spread of the session *means* is the part a single session cannot show
+you, and for RTK it is usually the larger number. If you have a surveyed
+benchmark, `--truth EAST NORTH` gives real accuracy instead of a proxy.
+
+The script self-verifies against synthetic data with known sigma, known
+correlation time and a known injected bias:
+
+```bash
+python3 src/outdoor_patrol_loc/scripts/analyse_gnss_soak.py --self-test
+```
+
+Confirm what the receiver actually reports, once, before trusting either
+answer:
+
+```bash
+ssh robot 'ros2 topic echo /um982_driver/fix --once' | tail -12
+```
+
+`position_covariance_type: 2` means the numbers came from the receiver's own
+GST-measured sigma -- the honest value. Type 1 means the driver fell back to
+`quality_to_sigma_m(fix) x HDOP` (0.02 m per HDOP when RTK-fixed,
+[um982_driver_node.cpp](../../../src/um982_driver/src/um982_driver_node.cpp)),
+which is an estimate, and on that path HDOP >= 3.0 alone trips the gate.
+
 ### If the site really does deliver 6-7 cm
 
 Two honest options. **Neither is "raise `sigma_stop_m`"** -- that threshold is
@@ -397,14 +535,14 @@ ssh robot "ros2 topic echo /gnss/fix_gated --field position_covariance" \
 
 | `position_covariance[0]` | σ | What the stack does |
 |---|---|---|
-| ≤ 0.0025 | ≤ 5 cm | Passes the gate — **full speed** |
-| > 0.0025 | > 5 cm | Gate inflates ×1000 → follower sees ~2 m → **dead stop** |
+| ≤ 0.0025 | ≤ 5 cm | Passes the gate; EKF fuses GNSS normally |
+| > 0.0025 | > 5 cm | Gate de-weights GNSS for the EKF (×1000) |
 
-There is no middle. The gate is a hard cliff at 5 cm, and the ×1000 inflation
-jumps clean over the follower's entire slow band (10–50 cm). A 4 cm fix drives
-at full speed; a 6 cm fix does not move at all. Read [GNSS accuracy
-budget](#gnss-accuracy-budget) before you go out — if your correction service
-delivers 6–7 cm, this phase fails and nothing later runs.
+Above 5 cm the EKF stops trusting GNSS, so the position estimate falls back on
+wheel odometry and drifts. The follower judges its own speed separately, from
+the raw sigma — see [The 5 cm cliff, and what was done about
+it](#the-5-cm-cliff-and-what-was-done-about-it). Measured at this site the
+worst RTK-fixed σ was 0.021 m, comfortably inside the gate.
 
 **Gate: σ ≤ 0.05 m, held for 10 minutes, with no dropouts.**
 

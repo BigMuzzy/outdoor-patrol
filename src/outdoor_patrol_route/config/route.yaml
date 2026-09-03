@@ -13,7 +13,11 @@ route_recorder:
     #                     test only.
     source: odometry_global
     odom_topic: /odometry/global
-    fix_topic: /gnss/fix_gated
+    # Raw fix, so the sigma_h written into the route file is what the
+    # receiver actually reported. Reading the gated topic would record the
+    # x1000-inflated value and misclassify an RTK-float stretch as 'single'.
+    # Safe because stations with no usable fix are skipped outright.
+    fix_topic: /um982_driver/fix
     output_path: route.yaml
 
     # Displacement OR yaw trigger. Time-based sampling under-samples corners
@@ -52,7 +56,13 @@ route_follower:
     # orders, so shipping one turns a working command line into
     # 'route_path is required'. Always pass it explicitly.
     odom_topic: /odometry/global
-    fix_topic: /gnss/fix_gated
+    # RAW driver fix, NOT /gnss/fix_gated. The gate multiplies covariance by
+    # 1000 on a degraded fix -- an EKF-weighting device, not a quality
+    # metric -- so reading it here would turn the sigma_slow/sigma_stop ramp
+    # below into an on/off cliff at 5 cm. Safe because horizontal_sigma()
+    # returns inf for NO_FIX / covariance-less messages, which the gate used
+    # to drop before the follower saw them.
+    fix_topic: /um982_driver/fix
     scan_topic: /scan
     # Publishes to the RAW command topic so the M3 forward brake stays in the
     # loop underneath (outdoor_patrol_safety). Publishing to /cmd_vel would

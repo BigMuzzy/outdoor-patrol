@@ -40,7 +40,8 @@
   ros__parameters:
     source: odometry_global
     odom_topic: /odometry/global
-    fix_topic: /gnss/fix_gated
+    # Raw fix: records the sigma the receiver actually reported.
+    fix_topic: /um982_driver/fix
     output_path: route.yaml
 
     sample_dist_m: 1.0
@@ -71,7 +72,8 @@ route_follower:
     # orders, so shipping one turns a working command line into
     # 'route_path is required'. Always pass it explicitly.
     odom_topic: /odometry/global
-    fix_topic: /gnss/fix_gated
+    # (quality topic set below, with the sigma thresholds)
+    fix_topic: /um982_driver/fix
     scan_topic: /scan
     cmd_topic: /cmd_vel_raw
     control_period_s: 0.05
@@ -100,12 +102,26 @@ route_follower:
     resume_clear_cycles: 20
     ramp_lateral_per_m: 0.6
 
-    # Unchanged from the sim defaults, deliberately. Alley walls restrict sky
-    # view and reflect, so a degraded fix is LIKELY here -- that is exactly
-    # when these must not be relaxed. If the robot keeps stopping, the answer
-    # is that the site has poor RTK, not that the threshold is wrong.
-    sigma_slow_m: 0.10
-    sigma_stop_m: 0.50
+    # Quality is judged on the RAW driver fix, not /gnss/fix_gated: the
+    # gate's x1000 inflation is an EKF-weighting device, and reading it here
+    # turns this speed ramp into an on/off cliff at 5 cm. See route_follower.
+    fix_topic: /um982_driver/fix
+
+    # Tightened for a 4 m alley, from measured data rather than by feel.
+    # A 20-minute RTK-fixed soak at this site (runs/gnss/soak_day1_report.txt)
+    # gave 0.017 m median and 0.021 m worst, so:
+    #
+    #   slow at 0.05  -- 2.4x the worst observed RTK-fixed sigma, so a healthy
+    #                    fix never triggers it, but losing RTK does
+    #   stop at 0.15  -- full retreat leaves 0.50 m of wall clearance, and a
+    #                    0.3 m position error would eat most of it. The open
+    #                    -field default of 0.50 m is far too loose between
+    #                    walls.
+    #
+    # If the robot keeps stopping here, the site has poor RTK. That is a
+    # finding, not a threshold to relax.
+    sigma_slow_m: 0.05
+    sigma_stop_m: 0.15
     fix_timeout_s: 2.0
 
     publish_markers: true

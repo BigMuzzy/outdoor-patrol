@@ -203,6 +203,38 @@ def save(route: Route, path: str) -> None:
         handle.write(dumps(route))
 
 
+def horizontal_sigma(msg) -> float:
+    """Horizontal 1-sigma (m) of a NavSatFix, or inf if it cannot be trusted.
+
+    Two details that are easy to get wrong, and both were wrong here:
+
+    **Use the WORSE axis, not just east.** ``position_covariance[0]`` is the
+    east variance and ``[4]`` the north. Satellite geometry is not isotropic:
+    measured over a 20-minute RTK-fixed soak at this site, north was 1.7x
+    worse than east (0.017 m vs 0.010 m). Reading only ``[0]`` therefore
+    understates the error by that factor, and would let a caller drive on a
+    fix that ``confidence_gate`` -- which tests ``max(cov[0], cov[4])`` --
+    considers degraded. The two must agree on what "sigma" means.
+
+    **A missing covariance is not a perfect fix.** ``position_covariance`` is
+    all-zero when ``position_covariance_type`` is ``UNKNOWN``, so a naive
+    ``sqrt(cov[0])`` returns 0.0, which reads as flawless and would command
+    full speed. Same for ``STATUS_NO_FIX``. Both return inf here so callers
+    fail safe. This matters most on the RAW driver topic, where such messages
+    are not filtered out the way ``confidence_gate`` filters them.
+    """
+    from sensor_msgs.msg import NavSatFix
+
+    if msg.position_covariance_type == NavSatFix.COVARIANCE_TYPE_UNKNOWN:
+        return float('inf')
+    if msg.status.status < 0:            # STATUS_NO_FIX
+        return float('inf')
+    variance = max(msg.position_covariance[0], msg.position_covariance[4], 0.0)
+    if not math.isfinite(variance):
+        return float('inf')
+    return math.sqrt(variance)
+
+
 def classify_fix(status: int, sigma_h: float,
                  fixed_sigma_m: float = 0.05,
                  float_sigma_m: float = 0.5) -> str:
