@@ -99,6 +99,81 @@ ssh robot 'docker ps'
 
 ---
 
+## GNSS accuracy budget
+
+**Check your correction service's spec against this before you drive.** The
+stack has a hard threshold at 5 cm, and a provider quoting "3-7 cm" straddles
+it.
+
+`confidence_gate` compares the fix's horizontal 1-sigma against
+`max_horizontal_sigma_m` (0.05 m in
+[confidence_gate.yaml](../../../src/outdoor_patrol_loc/config/confidence_gate.yaml)).
+Anything above it is republished with covariance multiplied by
+`covariance_inflation` (1000).
+
+| Reported sigma | Gate | Follower sees | Behaviour |
+|---|---|---|---|
+| 3 cm | pass | 0.03 m | full speed |
+| 4 cm | pass | 0.04 m | full speed |
+| 5 cm | pass | 0.05 m | full speed |
+| **6 cm** | degraded | **1.90 m** | **dead stop** |
+| 7 cm | degraded | 2.21 m | dead stop |
+
+**There is no middle.** The x1000 inflation jumps clean over the follower's
+own slow band (`sigma_slow_m` 0.10 -> `sigma_stop_m` 0.50): 0.06 x sqrt(1000)
+= 1.90 m, nearly 4x past the stop threshold. So the intent -- degrade
+gracefully as the fix worsens -- and the implementation -- binary cliff -- do
+not currently agree. A 4 cm fix drives at full speed; a 6 cm fix does not move.
+
+### Before changing anything, settle two questions
+
+1. **Is the provider quoting 1-sigma, or CEP/95%?** This matters more than the
+   numbers do. A 95% figure is roughly 2-sigma, so "3-7 cm at 95%" is about
+   1.5-3.5 cm 1-sigma and passes comfortably. Quoted as 1-sigma, the top half
+   of that range parks the robot. The stack compares against 1-sigma.
+2. **How far is the site from the base station?** RTK error grows roughly
+   1 cm per 10 km of baseline, so a "3-7 cm" spec is usually 3 cm near the
+   base and 7 cm at the edge of coverage. Your actual sigma depends on where
+   you are in that range, not on the headline number.
+
+Confirm what the receiver actually reports, once, before trusting either
+answer:
+
+```bash
+ssh robot 'ros2 topic echo /um982_driver/fix --once' | tail -12
+```
+
+`position_covariance_type: 2` means the numbers came from the receiver's own
+GST-measured sigma -- the honest value. Type 1 means the driver fell back to
+`quality_to_sigma_m(fix) x HDOP` (0.02 m per HDOP when RTK-fixed,
+[um982_driver_node.cpp](../../../src/um982_driver/src/um982_driver_node.cpp)),
+which is an estimate, and on that path HDOP >= 3.0 alone trips the gate.
+
+### If the site really does deliver 6-7 cm
+
+Two honest options. **Neither is "raise `sigma_stop_m`"** -- that threshold is
+what stops the robot driving on a fix it cannot trust, and moving it removes
+the protection rather than fixing the problem.
+
+- **Reduce `covariance_inflation` from 1000 to ~25.** This is the better fix:
+  it makes a degraded fix land *inside* the follower's slow band instead of
+  leaping over it, which is what the design intended. 0.06 x sqrt(25) = 0.30 m
+  -> the follower slows to about 50% rather than stopping.
+- **Raise `max_horizontal_sigma_m` from 0.05 to 0.08.** Accepts the provider's
+  full range at face value, at the cost of feeding up to 8 cm of position
+  error to the EKF. Affordable in the alley specifically -- there is 0.50 m of
+  wall clearance at full retreat -- but it widens the corridor error budget
+  everywhere else too.
+
+Whichever you pick, re-run the sim at that accuracy before going out. The
+harness takes the sigma as a knob, so this is a measurement rather than an
+argument:
+
+```bash
+GNSS_SIGMA=0.07 ./src/outdoor_patrol_sim/scripts/run_validation.sh /tmp/val r3
+```
+
+
 ## Phase 1 — GNSS soak, the go/no-go (15 min)
 
 **This is the phase most likely to end the day, so do it before anything else.**
@@ -121,11 +196,16 @@ ssh robot "ros2 topic echo /gnss/fix_gated --field position_covariance" \
   | awk 'NR%20==1'
 ```
 
-| `position_covariance[0]` | σ | Verdict |
+| `position_covariance[0]` | σ | What the stack does |
 |---|---|---|
-| ≤ 0.0025 | ≤ 0.05 m | **RTK fixed — go** |
-| 0.0025–0.01 | 0.05–0.1 m | Marginal, expect the robot to slow |
-| > 0.25 | > 0.5 m | **Stop. The follower will refuse to move.** |
+| ≤ 0.0025 | ≤ 5 cm | Passes the gate — **full speed** |
+| > 0.0025 | > 5 cm | Gate inflates ×1000 → follower sees ~2 m → **dead stop** |
+
+There is no middle. The gate is a hard cliff at 5 cm, and the ×1000 inflation
+jumps clean over the follower's entire slow band (10–50 cm). A 4 cm fix drives
+at full speed; a 6 cm fix does not move at all. Read [GNSS accuracy
+budget](#gnss-accuracy-budget) before you go out — if your correction service
+delivers 6–7 cm, this phase fails and nothing later runs.
 
 **Gate: σ ≤ 0.05 m, held for 10 minutes, with no dropouts.**
 

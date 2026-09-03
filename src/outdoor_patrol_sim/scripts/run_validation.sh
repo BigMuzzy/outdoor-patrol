@@ -17,6 +17,8 @@
 #   ./run_validation.sh /tmp/val r4         # just R4, reusing an earlier route
 #
 #   GUI=1 ./run_validation.sh /tmp/val r4   # + Gazebo GUI and RViz
+#
+#   GNSS_SIGMA=0.05 ./run_validation.sh /tmp/val r3   # re-run at a worse fix
 #   GUI=rviz ./run_validation.sh /tmp/val   # RViz only (much lighter)
 #   GUI=gz   ./run_validation.sh /tmp/val   # Gazebo GUI only
 #
@@ -202,6 +204,18 @@ start_sim() {
   stale="$(stack_nodes)"
   if [ -n "$stale" ]; then
     echo "    ERROR: stack nodes already on the ROS graph: $stale" >&2
+    # These node names are shared between the sim and the REAL robot, so this
+    # is not only a leftover-process check. If the robot is powered up on the
+    # same DDS domain, starting a sim here would publish /cmd_vel into a graph
+    # that the ESP32 drive node is subscribed to -- and the real robot would
+    # move. Check before you clear this.
+    if timeout "$PROBE_TIMEOUT" ros2 node list 2>/dev/null \
+        | grep -qE '^/(um982_driver|esp32_drive|sllidar_node|imu_driver)$'; then
+      echo "    *** A REAL ROBOT IS ON THIS ROS GRAPH. ***" >&2
+      echo "    Driver nodes are live, so /cmd_vel from a sim would reach" >&2
+      echo "    the actual chassis. Power the robot down, or put it on a" >&2
+      echo "    different ROS_DOMAIN_ID, before running the sim." >&2
+    fi
     return 1
   fi
 
@@ -299,6 +313,16 @@ follow_run() {      # label, world, bag name, extra scorer args...
   fi
 
   start_sim "$world" "$OUTDIR/sim_$label.log" || { FAILED=1; return 1; }
+
+  # GNSS_SIGMA lets a run be repeated at the accuracy a real correction
+  # service actually delivers, rather than the 2 cm the sim defaults to.
+  # Set it to the top of your provider's spec and see whether the stack still
+  # tracks -- that is a measurement, not a datasheet argument.
+  if [ -n "${GNSS_SIGMA:-}" ]; then
+    note "setting simulated fix sigma to ${GNSS_SIGMA} m"
+    ros2 param set /gnss_sim horizontal_stddev_m "$GNSS_SIGMA" > /dev/null 2>&1 \
+      || note "WARNING: could not set gnss_sim sigma"
+  fi
 
   rm -rf "${OUTDIR:?}/$bag"
   local recorder
