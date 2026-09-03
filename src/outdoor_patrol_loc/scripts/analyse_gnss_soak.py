@@ -236,6 +236,18 @@ def spec_consistency(sigma_axis: float, spec_lo: float, spec_hi: float):
 # --------------------------------------------------------------------------
 
 def _resolve_bag(path: str):
+    # Check existence first. Without this a missing path falls through to
+    # rosbag2, which reports "no plugin found that could open URI" -- an
+    # accurate but thoroughly misleading way to say "no such file".
+    if not os.path.exists(path):
+        raise SystemExit(
+            '%s does not exist.\n'
+            '  Record a soak first (robot parked, 15+ min):\n'
+            "    ssh robot 'ros2 bag record -o /data/soak_day1 "
+            "/um982_driver/fix'\n"
+            '  then copy it to this machine:\n'
+            '    scp -r robot:~/code/outdoor-patrol/deploy/data/soak_day1 '
+            '/tmp/' % path)
     if os.path.isdir(path):
         if os.path.exists(os.path.join(path, 'metadata.yaml')):
             return path, ''
@@ -254,11 +266,19 @@ def _resolve_bag(path: str):
 
 def read_bag(path: str, topic: str):
     """(lat, lon, alt, times, reported_sigma, meta) from a bag of fixes."""
-    from rclpy.serialization import deserialize_message
-    import rosbag2_py
-    from rosidl_runtime_py.utilities import get_message
-
+    # Resolve the path BEFORE importing rclpy: a missing bag should say so,
+    # not fail with ModuleNotFoundError because the shell has no ROS sourced.
     uri, storage_id = _resolve_bag(path)
+
+    try:
+        from rclpy.serialization import deserialize_message
+        import rosbag2_py
+        from rosidl_runtime_py.utilities import get_message
+    except ImportError as exc:
+        raise SystemExit(
+            'ROS 2 is not on the Python path (%s).\n'
+            '  source /opt/ros/jazzy/setup.bash' % exc)
+
     reader = rosbag2_py.SequentialReader()
     reader.open(rosbag2_py.StorageOptions(uri=uri, storage_id=storage_id),
                 rosbag2_py.ConverterOptions('', ''))

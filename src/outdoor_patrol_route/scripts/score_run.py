@@ -31,10 +31,6 @@ import sys
 import numpy as np
 import yaml
 
-from rclpy.serialization import deserialize_message
-import rosbag2_py
-from rosidl_runtime_py.utilities import get_message
-
 # Robot width: wheel_separation 0.54481 + wheel_width 0.060 (chassis.yaml).
 ROBOT_HALF_WIDTH_M = 0.3024
 
@@ -46,6 +42,11 @@ def _resolve_bag(path: str):
     perfectly readable .mcap behind, so fall back to opening the file
     directly rather than losing the run.
     """
+    # Existence first: otherwise rosbag2 reports "no plugin found that could
+    # open URI", which is an accurate but misleading way to say "no such
+    # file" and sends you looking at storage plugins.
+    if not os.path.exists(path):
+        raise SystemExit('%s does not exist -- was the run recorded?' % path)
     if os.path.isdir(path):
         if os.path.exists(os.path.join(path, 'metadata.yaml')):
             return path, ''
@@ -64,7 +65,18 @@ def _resolve_bag(path: str):
 
 def read_bag(path: str, topics):
     """{topic: [(t_seconds, message), ...]} for the requested topics."""
+    # Resolve the path BEFORE touching rclpy, so a missing bag says so rather
+    # than failing with ModuleNotFoundError in a shell with no ROS sourced.
     uri, storage_id = _resolve_bag(path)
+
+    try:
+        from rclpy.serialization import deserialize_message
+        import rosbag2_py
+        from rosidl_runtime_py.utilities import get_message
+    except ImportError as exc:
+        raise SystemExit(
+            'ROS 2 is not on the Python path (%s).\n'
+            '  source /opt/ros/jazzy/setup.bash' % exc)
     reader = rosbag2_py.SequentialReader()
     reader.open(
         rosbag2_py.StorageOptions(uri=uri, storage_id=storage_id),
