@@ -131,10 +131,94 @@ not currently agree. A 4 cm fix drives at full speed; a 6 cm fix does not move.
    numbers do. A 95% figure is roughly 2-sigma, so "3-7 cm at 95%" is about
    1.5-3.5 cm 1-sigma and passes comfortably. Quoted as 1-sigma, the top half
    of that range parks the robot. The stack compares against 1-sigma.
-2. **How far is the site from the base station?** RTK error grows roughly
-   1 cm per 10 km of baseline, so a "3-7 cm" spec is usually 3 cm near the
-   base and 7 cm at the edge of coverage. Your actual sigma depends on where
-   you are in that range, not on the headline number.
+2. **Is the correction source a physical base or a VRS?** This decides
+   whether baseline distance means anything at all. With a *physical* base,
+   RTK error grows roughly 1 cm per 10 km of baseline, so a "3-7 cm" spec is
+   usually 3 cm near the base and 7 cm at the edge of coverage. With a
+   **virtual reference station** the baseline is ~0 by construction -- the
+   caster synthesises a base beside you from your uploaded GGA -- so that
+   rule does not apply and the error is set by the density and quality of the
+   provider's physical network instead.
+
+   This site uses a VRS (Point One `AUTO` mountpoint), measured at a 99 m
+   baseline. See [Which base station, and how far?](#which-base-station-and-how-far)
+   for how that was determined and what it implies.
+
+### Which base station, and how far?
+
+**This site: a virtual base 99 m away, station ID 4053.** Which means the
+baseline question has a different answer than it would for a physical base --
+see below.
+
+Two independent sources, neither needing extra tooling.
+
+**GGA already carries the station ID and correction age.** The driver parses
+both, and the raw sentence is on `/um982_driver/nmea_sentence`:
+
+```bash
+ros2 topic echo /um982_driver/nmea_sentence --field sentence | grep -m3 GGA
+```
+
+```
+$GNGGA,025453.40,4732.58913274,N,12152.82201833,W,5,30,0.5,250.6193,M,-21.0746,M,1.4,4053*6A
+                                                        ^  ^   ^                    ^   ^
+                                                  quality  |  HDOP        corr. age  station
+                                                        sats
+```
+
+Quality `5` is RTK float, `4` is RTK fixed, `1` is standalone. Correction age
+should stay a few seconds; tens of seconds means the stream has stalled even
+though the socket is still open.
+
+**RTCM 1005/1006 carries the base position.** That is the only way to get an
+actual distance. Decode it off `/rtcm`:
+
+```bash
+python3 src/outdoor_patrol_loc/scripts/rtcm_base_info.py
+```
+
+Measured here:
+
+| | |
+|---|---|
+| Station ID | 4053 |
+| Base LLA | 47.5440000, -121.8800000, 250.00 m |
+| Rover | 47.5431488, -121.8803670, 250.6 m |
+| **Baseline** | **0.099 km** |
+| Antenna descriptor (1033) | `ADVNULLANTENNA NONE` |
+| Message types | 1005, 1033, 1074, 1084, 1094, 1124, 1230 |
+
+**That base is virtual, and three things say so.** The coordinates are exactly
+round to every decimal place -- a surveyed monument has arbitrary decimals.
+`ADVNULLANTENNA` is the conventional "no physical antenna" descriptor. And the
+position sits ~99 m from the rover, which is where a caster puts a synthesised
+base: right next to you.
+
+### What a VRS changes
+
+**The 1 cm per 10 km baseline rule does not apply.** The 99 m figure is an
+artefact of how the VRS is generated, not a measure of correction quality. Do
+not read it as "we are 99 m from the reference network and therefore have
+excellent corrections" -- the real physical stations are tens of kilometres
+away, and the interpolation between them is what sets the error.
+
+Practical consequences:
+
+- **`send_gga: true` is load-bearing, not optional.** The caster needs your
+  position to synthesise the base. Stop the GGA upload and corrections either
+  stop or silently go stale. This is why `mountpoint: "AUTO"` and
+  `send_gga: true` are paired in
+  [`ntrip.yaml.example`](../../../src/ntrip_client/config/ntrip.yaml.example).
+- **The base position moves when you do**, in jumps, as the caster
+  re-synthesises. Irrelevant over a 30 m alley; worth knowing before a long
+  traverse.
+- **Provider accuracy specs describe network quality**, not your baseline. So
+  the "3-7 cm" range is about where you sit in their coverage, and cannot be
+  narrowed by measuring distance to the virtual base.
+- **A VRS is normally *better* than a distant physical base**, because the
+  network models the atmosphere across several stations rather than
+  extrapolating from one. Expect the good end of the spec, not the bad end --
+  but confirm it with a soak rather than assuming it.
 
 ### Measuring it, and what the measurement can settle
 
