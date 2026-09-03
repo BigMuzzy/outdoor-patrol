@@ -220,6 +220,55 @@ Practical consequences:
   extrapolating from one. Expect the good end of the spec, not the bad end --
   but confirm it with a soak rather than assuming it.
 
+### Measured at this site, 2026-09-03
+
+A 20.5-minute soak at RTK-fixed (GGA quality 4, 26-30 satellites, HDOP 0.6,
+corrections 0.6-1.4 s old). Raw report:
+[runs/gnss/soak_day1_report.txt](../../../runs/gnss/soak_day1_report.txt).
+
+| | |
+|---|---|
+| Receiver-reported sigma | **0.017 m** median, 0.021 m worst |
+| Actual scatter | 0.006 m east, **0.017 m** north, 0.019 m up |
+| Radial | CEP 0.014 m, R95 0.033 m, max 0.051 m |
+| Reported vs actual | ratio **0.97** |
+| Decorrelation time | 239 s |
+
+**The go/no-go: PASSES.** Worst reported sigma 0.021 m against a 0.05 m gate,
+so the robot drives with better than 2x margin. Nothing in
+`confidence_gate` or `route_alley.yaml` needs changing.
+
+**The receiver is honest.** It claims 0.017 m and scatters 0.017 m -- ratio
+0.97. That matters because the gate trusts the claim: a receiver that
+under-reported would pass fixes the gate should stop, and this one does not.
+
+**The provider's "3-7 cm" is a 95%-class figure, not 1-sigma.** A 1-sigma
+reading would imply a 0.017 m spec, well under the quoted 3 cm floor; R95
+(0.041 m) and 2DRMS (0.047 m) both land inside 3-7 cm. So the honest 1-sigma
+accuracy here is roughly 1.5-3 cm -- the good end, which is what a VRS on a
+dense network should give. **The earlier worry that 6-7 cm would park the
+robot does not apply at this site.** Leave `covariance_inflation` at 1000 and
+`max_horizontal_sigma_m` at 0.05.
+
+**Two caveats, both real:**
+
+- **Only ~5 independent samples.** 6155 fixes at 5 Hz sounds like a lot, but
+  the error decorrelates over 239 s, so 20 minutes buys about five. Hence the
+  wide interval on that sigma (95% CI 0.005-0.028 m). It is enough to settle
+  1-sigma vs 95%, which is a 2.4x question; it is not a precise sigma.
+- **This is precision, not accuracy.** One session cannot see a slowly-varying
+  bias -- and with a 239 s decorrelation time there is clearly one present.
+  Occupy the same mark on another day to measure it:
+
+  ```bash
+  analyse_gnss_soak.py --bag runs/gnss/soak_day1 --bag runs/gnss/soak_day2
+  ```
+
+Note the 3:1 north/east anisotropy (0.017 vs 0.006 m). Normal for
+mid-latitude sites -- satellite geometry is poorer north-south -- and the
+reason `confidence_gate` tests `max(cov[0], cov[4])` rather than averaging
+the two.
+
 ### Measuring it, and what the measurement can settle
 
 **Short answer: a measurement settles the question that matters, and only

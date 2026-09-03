@@ -14,3 +14,8 @@ src/esp32-s3-uros-controller.worktrees
 # Never commit real credentials.
 **/ntrip.yaml
 **/__pycache__/
+# Recorded GNSS soaks / validation bags. Keep the analysis text, not the
+# multi-megabyte mcap.
+runs/**/*.mcap
+runs/**/*.db3
+runs/**/metadata.yaml

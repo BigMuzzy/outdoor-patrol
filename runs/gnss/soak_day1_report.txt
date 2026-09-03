@@ -1,0 +1,54 @@
+========================================================================
+GNSS site characterisation -- 1 session(s)
+========================================================================
+
+soak_day1
+  6155 fixes over 20.5 min at 5.0 Hz
+  covariance source : receiver GST (measured)
+  receiver claims   : 0.017 m per-axis 1-sigma (median), 0.021 m worst
+  actually scattered: 0.006 m east, 0.017 m north, 0.019 m up
+  worse axis        : 0.017 m  (95% CI 0.005 - 0.028)
+  radial            : CEP 0.014 m, R95 0.033 m, max 0.051 m
+  decorrelation     : 239 s -> only ~5 independent samples
+    NOTE: under 10 independent samples. This sigma is an impression, not a measurement -- soak for longer.
+
+------------------------------------------------------------------------
+1. Will the stack drive here?
+------------------------------------------------------------------------
+  confidence_gate passes a fix when the receiver reports
+  sqrt(max(cov[0], cov[4])) <= 0.05 m.
+  Receiver reported 0.017 m median, 0.021 m worst.
+  -> PASSES throughout. The robot will drive.
+
+------------------------------------------------------------------------
+2. Is the receiver telling the truth about its own sigma?
+------------------------------------------------------------------------
+  claims 0.017 m, scatters 0.017 m within a session -> ratio 0.97
+  -> Consistent. The number the gate tests means what it says.
+  (Within-session only. It cannot see a slowly-varying bias --
+   that is what multiple sessions are for.)
+
+------------------------------------------------------------------------
+3. What does a "3-7 cm" provider spec mean?
+------------------------------------------------------------------------
+  1-sigma        would imply a spec of 0.017 m   -
+  CEP (50%)      would imply a spec of 0.020 m   -
+  DRMS (~65%)    would imply a spec of 0.023 m   -
+  R95            would imply a spec of 0.041 m   CONSISTENT
+  2DRMS (~95%)   would imply a spec of 0.047 m   CONSISTENT
+
+  Consistent with: R95, 2DRMS (~95%)
+  CAUTION: 1-sigma and CEP differ by only 1.18x and cannot be
+  separated by this test. 1-sigma vs 95% differ by 2.4x and can.
+
+------------------------------------------------------------------------
+4. Accuracy, not just precision
+------------------------------------------------------------------------
+  UNKNOWN, and this is the important gap. One session measures
+  scatter about its own mean, so a slowly-varying bias -- for
+  RTK, several cm -- is invisible to it.
+
+  Occupy the same physical mark on another day at a different
+  time and pass both bags. The spread of the session means is
+  exactly the part a single session cannot show you.
+
