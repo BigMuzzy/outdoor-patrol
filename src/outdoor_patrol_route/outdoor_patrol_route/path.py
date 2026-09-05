@@ -50,6 +50,12 @@ _MIN_CONTROL_SPACING_M = 1e-3
 # module docstring for the measured trade-off.
 DEFAULT_SMOOTH_WINDOW = 5
 
+# Arc length over which curvature is measured. Long enough to ride over the
+# spline ripple that uneven station spacing produces, and close to the scale
+# that pure pursuit and the offset lanes actually respond to. See
+# Path._curvatures.
+CURVATURE_BASELINE_M = 0.5
+
 
 def savitzky_golay(points: np.ndarray, window: int, order: int = 2,
                    loop: bool = False) -> np.ndarray:
@@ -177,6 +183,7 @@ class Path:
         self.normal = np.stack(
             [-self.tangent[:, 1], self.tangent[:, 0]], axis=1)
         self.yaw = np.arctan2(self.tangent[:, 1], self.tangent[:, 0])
+        self.curvature = self._curvatures(self.yaw, self.step, self.loop)
 
     # -- construction helpers ---------------------------------------------
 
@@ -221,6 +228,63 @@ class Path:
         norm[norm < 1e-12] = 1.0
         return d / norm[:, None]
 
+    @staticmethod
+    def _curvatures(yaw: np.ndarray, step: float, loop: bool,
+                    baseline_m: float = CURVATURE_BASELINE_M) -> np.ndarray:
+        """Signed curvature, dtheta/ds. Positive turns left (REP-103).
+
+        Measured over a BASELINE of about half a metre rather than between
+        adjacent 5 cm samples, for two reasons -- one numerical, one physical.
+
+        Numerically, the recorder's two triggers produce wildly uneven station
+        spacing: 1 m on a straight and 8.7 cm round a 1 m corner, a ratio of
+        over 50:1 on a driveway square. Catmull-Rom interpolates every station
+        exactly, so at those transitions the spline ripples. The ripple is
+        sub-centimetre in position but curvature is a second derivative, and a
+        point-to-point estimate turns it into spikes: measured on a realistic
+        recording of a 1.0 m corner, adjacent-sample differencing reports
+        0.24 m. Reading that as the corner radius would condemn a perfectly
+        good route.
+
+        Physically, half a metre is nearer the scale that matters anyway.
+        Nothing downstream responds to curvature at 5 cm: pure pursuit steers
+        at a look-ahead of a metre or more, and the offset lane this feeds is
+        displaced by a similar amount. Both average over exactly the ripple
+        that the short baseline mistakes for a corner.
+
+        The heading is unwrapped before differencing. Without that, every
+        pass through +/-pi reads as 2*pi/baseline of curvature -- 12 m^-1 on a
+        half-metre baseline, which would swamp any real corner.
+        """
+        n = len(yaw)
+        if n < 2:
+            return np.zeros(n)
+
+        half = max(1, int(round(0.5 * baseline_m / step)))
+        span = 2.0 * half * step
+
+        if loop:
+            unwrapped = np.unwrap(yaw)
+            # A closed loop accumulates a whole turn, so the seam carries real
+            # signal; undo only the jump that the roll itself introduces.
+            turns = round((unwrapped[-1] - unwrapped[0]) / (2.0 * math.pi))
+            nxt = np.roll(unwrapped, -half)
+            prv = np.roll(unwrapped, half)
+            nxt[-half:] += turns * 2.0 * math.pi
+            prv[:half] -= turns * 2.0 * math.pi
+            return (nxt - prv) / span
+
+        unwrapped = np.unwrap(yaw)
+        if n <= 2 * half:
+            # Too short for the baseline: fall back to the whole path.
+            return np.full(n, (unwrapped[-1] - unwrapped[0])
+                           / max((n - 1) * step, 1e-9))
+        out = np.empty(n)
+        out[half:n - half] = (unwrapped[2 * half:] - unwrapped[:-2 * half]) / span
+        out[:half] = out[half]
+        out[n - half:] = out[n - half - 1]
+        return out
+
     # -- queries -----------------------------------------------------------
 
     def _index(self, s: float) -> int:
@@ -249,6 +313,53 @@ class Path:
     def offset_polyline(self, lateral: float) -> np.ndarray:
         """The whole path displaced sideways -- for corridor markers."""
         return self.xy + lateral * self.normal
+
+    def offset_scale(self, lateral: float) -> np.ndarray:
+        """Arc-length stretch of the offset curve at each station.
+
+        Displacing by ``d`` along the left normal gives an offset curve whose
+        arc length element is ``(1 - d*kappa) ds``. So this is 1 on a
+        straight, above 1 on the outside of a bend and below 1 on the inside.
+
+        At zero the offset curve has collapsed to a cusp, and below zero it
+        has **inverted**: consecutive points run backwards along it. That is
+        not a degraded lane, it is a lane pointing the wrong way, and
+        :meth:`offset_at` will happily return points from it.
+        """
+        return 1.0 - float(lateral) * self.curvature
+
+    def offset_folds(self, lateral: float):
+        """Where, if anywhere, offsetting by `lateral` inverts the path.
+
+        Returns ``(folds, worst_scale, station)``. Offsets on the OUTSIDE of
+        every bend never fold, so for a one-sided retreat only that side
+        needs checking.
+        """
+        scale = self.offset_scale(lateral)
+        i = int(np.argmin(scale))
+        return bool(scale[i] <= 0.0), float(scale[i]), float(i * self.step)
+
+    def min_turn_radius(self, sign: float = 0.0):
+        """Tightest turn radius, optionally only for turns to one side.
+
+        ``sign`` > 0 considers only left turns, < 0 only right turns, 0 both.
+        Returns ``(radius, station)``, radius ``inf`` for a path with no
+        bend in that direction.
+        """
+        kappa = self.curvature
+        if sign > 0:
+            mask = kappa > 0
+        elif sign < 0:
+            mask = kappa < 0
+        else:
+            mask = np.ones(len(kappa), dtype=bool)
+        if not np.any(mask):
+            return float('inf'), 0.0
+        magnitude = np.where(mask, np.abs(kappa), 0.0)
+        i = int(np.argmax(magnitude))
+        if magnitude[i] <= 1e-9:
+            return float('inf'), float(i * self.step)
+        return float(1.0 / magnitude[i]), float(i * self.step)
 
     def _window(self, s_lo: float, s_hi: float) -> np.ndarray:
         """Indices covering [s_lo, s_hi], wrapping if this is a loop."""

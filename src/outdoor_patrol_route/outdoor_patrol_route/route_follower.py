@@ -107,6 +107,19 @@ class RouteFollower(Node):
         self.declare_parameter('laps', 1.0)
 
         self.declare_parameter('retreat_side', 'right')
+        #: Obstacle avoidance master switch.
+        #:
+        #: False makes the follower track the taught line and nothing else:
+        #: the corridor is not consulted, the lidar is not read for
+        #: avoidance, and the commanded offset is held at zero. This is the
+        #: mode for measuring what LOCALIZATION can do -- cross-track then
+        #: reflects GNSS and control alone, with no retreat manoeuvres mixed
+        #: in to explain away a wander.
+        #:
+        #: It does NOT disable the forward safety brake. `scan_safety` sits
+        #: downstream on /cmd_vel and still stops the robot for anything in
+        #: front of it; this only stops the follower steering AROUND things.
+        self.declare_parameter('avoidance_enabled', True)
         self.declare_parameter('corridor_half_width_m', 3.0)
         self.declare_parameter('offset_step_m', 0.6)
         self.declare_parameter('clearance_half_width_m', 0.55)
@@ -123,6 +136,14 @@ class RouteFollower(Node):
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('fromll_service', '/fromLL')
         self.declare_parameter('publish_markers', True)
+        #: Draw the lane and corridor bands (the white and orange lines).
+        #:
+        #: Separate from `publish_markers` because the useful thing to hide is
+        #: the bands, not the centerline: on a tight route the offset curves
+        #: fold and the scene fills with crossing lines, but the green route
+        #: and the look-ahead point are still what you are watching. Turning
+        #: this off keeps those two.
+        self.declare_parameter('show_corridor', True)
         self.declare_parameter('smooth_window', 5)
 
         self._period = float(self.get_parameter('control_period_s').value)
@@ -169,6 +190,8 @@ class RouteFollower(Node):
         self._state = STATE_DRIVING
         self._finished = False
         self._path = None
+        self._warned_folded_markers = False
+        self._redraw_timer = None
 
         qos = QoSProfile(depth=10)
         qos.reliability = ReliabilityPolicy.RELIABLE
@@ -211,6 +234,111 @@ class RouteFollower(Node):
         # rather than relying on a latch.
         self.create_timer(2.0, self._publish_path_markers)
 
+        # Live retuning. Several tunables are cached above rather than read
+        # every cycle, so without this `ros2 param set` would appear to work
+        # and change nothing -- the worst kind of knob. Re-cache here instead.
+        self.add_on_set_parameters_callback(self._on_set_parameters)
+
+    # -- live parameters ---------------------------------------------------
+
+    #: name -> (attribute, cast). Only the ones that are safe to change in
+    #: flight. Route path, frames and control period are deliberately absent:
+    #: they are structural, and changing them mid-run would need the path or
+    #: the timers rebuilt.
+    _LIVE_PARAMS = {
+        'nominal_speed_ms': ('_nominal', float),
+        'min_speed_ms': ('_min_speed', float),
+        'max_angular_rads': ('_max_omega', float),
+        'trigger_range_m': ('_trigger_range', float),
+        'clearance_half_width_m': ('_clearance', float),
+        'resume_clear_cycles': ('_resume_cycles', int),
+        'ramp_lateral_per_m': ('_ramp_rate', float),
+        'sigma_slow_m': ('_sigma_slow', float),
+        'sigma_stop_m': ('_sigma_stop', float),
+        'fix_timeout_s': ('_fix_timeout', float),
+        'laps': ('_laps', float),
+    }
+
+    def _on_set_parameters(self, params):
+        """Validate and apply a live parameter change."""
+        from rcl_interfaces.msg import SetParametersResult
+
+        rebuild_offsets = False
+        redraw_markers = False
+        for param in params:
+            if param.name in ('corridor_half_width_m', 'offset_step_m',
+                              'clearance_half_width_m'):
+                if float(param.value) < 0.0:
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{param.name} must not be negative')
+                rebuild_offsets = True
+            if param.name in ('nominal_speed_ms', 'min_speed_ms',
+                              'max_angular_rads'):
+                if float(param.value) <= 0.0:
+                    return SetParametersResult(
+                        successful=False,
+                        reason=f'{param.name} must be positive')
+            if param.name == 'retreat_side':
+                if str(param.value).lower() not in ('left', 'right'):
+                    return SetParametersResult(
+                        successful=False,
+                        reason='retreat_side must be left or right')
+
+        for param in params:
+            entry = self._LIVE_PARAMS.get(param.name)
+            if entry is not None:
+                attribute, cast = entry
+                setattr(self, attribute, cast(param.value))
+            elif param.name == 'retreat_side':
+                self._side_sign = (
+                    1.0 if str(param.value).lower() == 'left' else -1.0)
+                rebuild_offsets = True
+            elif param.name == 'avoidance_enabled':
+                self.get_logger().warn(
+                    'obstacle avoidance %s'
+                    % ('ENABLED' if param.value else
+                       'DISABLED -- tracking the taught line only; the '
+                       'forward safety brake is unaffected'))
+                if not param.value:
+                    # Come back to the centreline rather than freezing at
+                    # whatever offset the last obstacle produced.
+                    self._committed = 0
+                    self._clear_streak = 0
+            elif param.name == 'show_corridor':
+                # Redraw now rather than on the next 2 s tick: a display
+                # toggle that takes two seconds feels broken.
+                redraw_markers = True
+
+        if redraw_markers and not rebuild_offsets:
+            # show_corridor is read live inside _publish_path_markers, but
+            # this callback runs BEFORE the value is committed -- so defer by
+            # one cycle rather than drawing with the stale value.
+            self._redraw_timer = self.create_timer(0.05, self._redraw_once)
+
+        if rebuild_offsets:
+            # _candidate_offsets reads the parameters live, but this callback
+            # runs BEFORE they are committed, so recompute from the values
+            # being set rather than from the store.
+            overrides = {p.name: p.value for p in params}
+            self._offsets = self._candidate_offsets(overrides)
+            self._warned_folded_markers = False
+            self.get_logger().info(
+                'offsets now %s'
+                % ', '.join('%+.1f' % d for d in self._offsets))
+            self._publish_path_markers()
+
+        return SetParametersResult(successful=True)
+
+    def _redraw_once(self) -> None:
+        """One-shot marker redraw once a display parameter has committed."""
+        timer = getattr(self, '_redraw_timer', None)
+        if timer is not None:
+            timer.cancel()
+            self.destroy_timer(timer)
+            self._redraw_timer = None
+        self._publish_path_markers()
+
     # -- start-up ----------------------------------------------------------
 
     def _load_route(self):
@@ -229,15 +357,28 @@ class RouteFollower(Node):
                route.worst_fix()))
         return route
 
-    def _candidate_offsets(self):
-        """Offsets to try, smallest magnitude first, inside the corridor."""
-        step = float(self.get_parameter('offset_step_m').value)
-        limit = (float(self.get_parameter('corridor_half_width_m').value)
-                 - self._clearance)
+    def _candidate_offsets(self, overrides=None):
+        """Offsets to try, smallest magnitude first, inside the corridor.
+
+        `overrides` carries values from an in-flight parameter change, which
+        have not been committed to the parameter store yet.
+        """
+        def value(name):
+            if overrides and name in overrides:
+                return overrides[name]
+            return self.get_parameter(name).value
+
+        step = float(value('offset_step_m'))
+        clearance = float(value('clearance_half_width_m'))
+        limit = float(value('corridor_half_width_m')) - clearance
+        side = str(value('retreat_side')).lower() if overrides and \
+            'retreat_side' in overrides else None
+        sign = self._side_sign if side is None else (
+            1.0 if side == 'left' else -1.0)
         if step <= 0.0 or limit <= 0.0:
             return [0.0]
         count = int(math.floor(limit / step))
-        return [self._side_sign * step * i for i in range(count + 1)]
+        return [sign * step * i for i in range(count + 1)]
 
     def _check_retreat_geometry(self) -> None:
         """Refuse a trigger range the ramp cannot use.
@@ -326,7 +467,58 @@ class RouteFollower(Node):
             'path built: %.2f m, loop=%s, offsets %s'
             % (self._path.length, self._path.loop,
                ', '.join('%+.1f' % d for d in self._offsets)))
+        self._check_offset_geometry()
         self._publish_path_markers()
+
+    def _check_offset_geometry(self) -> None:
+        """Refuse a retreat wider than the route's tightest inside corner.
+
+        The retreat is a lateral displacement along the path normal, so the
+        lane it steers to is the centerline offset by `d`. On the INSIDE of a
+        bend that offset curve shrinks, and once |d| reaches the corner
+        radius it collapses to a cusp and then inverts -- consecutive points
+        run backwards along it.
+
+        `offset_at` cannot detect that. It returns a point either way, so the
+        look-ahead silently jumps behind the robot and pure pursuit commands a
+        turn into the corner it was trying to avoid. Nothing else in the stack
+        would report it, which is why it is worth a start-up check: the route
+        and the corridor width are both known here, before anything moves.
+
+        Only the retreat side matters. Offsets on the outside of a bend
+        stretch rather than shrink, and never fold.
+        """
+        widest = max(self._offsets, key=abs, default=0.0)
+        if not widest or self._path is None:
+            return
+
+        folds, scale, station = self._path.offset_folds(widest)
+        radius, tight_at = self._path.min_turn_radius(sign=self._side_sign)
+
+        if folds:
+            self.get_logger().error(
+                'retreat lane is unusable: offsetting %+.2f m inverts the '
+                'path at s=%.1f m, where the route turns with a %.2f m '
+                'radius. The look-ahead point would jump behind the robot '
+                'and steer it INTO the corner. Reduce '
+                'corridor_half_width_m below %.2f m, or re-teach that corner '
+                'wider.'
+                % (widest, station, radius, radius + self._clearance))
+        elif scale < 0.35:
+            self.get_logger().warn(
+                'retreat lane is very tight: offsetting %+.2f m leaves only '
+                '%.0f%% of the centerline arc length at s=%.1f m (%.2f m '
+                'corner radius). It will still steer, but the offset lane is '
+                'heavily compressed there.'
+                % (widest, scale * 100.0, station, radius))
+        elif math.isfinite(radius):
+            self.get_logger().info(
+                'retreat geometry vs route: widest offset %+.2f m against a '
+                '%.2f m tightest %s-hand corner at s=%.1f m (%.0f%% lane '
+                'left)'
+                % (widest, radius,
+                   'left' if self._side_sign > 0 else 'right',
+                   tight_at, scale * 100.0))
 
     # -- inputs ------------------------------------------------------------
 
@@ -433,6 +625,18 @@ class RouteFollower(Node):
                 <= float(self.get_parameter('goal_tolerance_m').value))
 
     def _blocked_offsets(self):
+        """Which candidate offsets have something in them.
+
+        With avoidance off, nothing is ever blocked and only the centreline
+        is a candidate -- so the follower tracks the taught line and never
+        manoeuvres. The forward brake in `scan_safety` is untouched and still
+        stops the robot; this decides only whether it may steer around.
+        """
+        if not bool(self.get_parameter('avoidance_enabled').value):
+            return [False] * len(self._offsets)
+        return self._blocked_from_scan()
+
+    def _blocked_from_scan(self):
         """Which candidate offsets have something in them, ahead of us."""
         blocked = [False] * len(self._offsets)
         if len(self._scan_points) == 0 or self._scan_stamp is None:
@@ -557,6 +761,12 @@ class RouteFollower(Node):
             'speed': round(speed, 3),
             'omega': round(omega, 4),
             'sigma_h': round(self._sigma, 4),
+            'avoidance': bool(self.get_parameter('avoidance_enabled').value),
+            'corridor_half_width_m': float(
+                self.get_parameter('corridor_half_width_m').value),
+            'nominal_speed_ms': self._nominal,
+            'show_corridor': bool(
+                self.get_parameter('show_corridor').value),
         }
         self._status_pub.publish(String(data=json.dumps(status)))
 
@@ -595,11 +805,21 @@ class RouteFollower(Node):
         Stands in for the deferred route_to_map occupancy grid (issue #8,
         review Q4): it is what the operator actually wants to see, and it does
         not pre-commit the grid semantics.
+
+        Bands are drawn with GAPS where the offset curve folds. Displacing a
+        path sideways by `d` inverts it wherever the local turn radius drops
+        below `d` -- and on a hand-taught route with tight wiggles that is
+        most of it, which renders as a tangle of lines crossing the scene. A
+        tangle is worse than nothing: it draws corridor where no corridor
+        exists. A gap says the same thing honestly, and it says it exactly
+        where the geometry has broken down.
         """
         if not bool(self.get_parameter('publish_markers').value):
             return
         if self._path is None:
             return
+
+        show_corridor = bool(self.get_parameter('show_corridor').value)
         half = float(self.get_parameter('corridor_half_width_m').value)
         lane = self._route.lane_half_width_m
         bands = [
@@ -615,15 +835,55 @@ class RouteFollower(Node):
                                              'a': 0.5}),
         ]
         array = MarkerArray()
+        folded_bands = []
         for index, (name, offset, width, colour) in enumerate(bands):
-            marker = self._marker(name, index, Marker.LINE_STRIP, width,
-                                  colour)
+            # The centerline is always drawn; the bands are what `show_corridor`
+            # hides. Hiding has to be an explicit DELETE -- simply not
+            # publishing leaves the last drawn copy sitting in RViz for ever,
+            # so the toggle would look broken.
+            if offset != 0.0 and not show_corridor:
+                marker = self._marker(name, index, Marker.LINE_LIST, width,
+                                      colour)
+                marker.action = Marker.DELETE
+                array.markers.append(marker)
+                continue
+
             polyline = self._path.offset_polyline(offset)
-            marker.points = [Point(x=float(p[0]), y=float(p[1]), z=0.05)
-                             for p in polyline]
-            if self._path.loop:
-                marker.points.append(marker.points[0])
+            valid = self._path.offset_scale(offset) > 0.0
+            if offset == 0.0:
+                valid = np.ones(len(polyline), dtype=bool)
+            dropped = int(np.count_nonzero(~valid))
+            if dropped:
+                folded_bands.append(f'{name} ({dropped} pts)')
+
+            # LINE_LIST rather than LINE_STRIP: a strip cannot have holes, and
+            # bridging a fold with a straight chord would draw the very line
+            # the gap exists to avoid.
+            marker = self._marker(name, index, Marker.LINE_LIST, width,
+                                  colour)
+            points = []
+            for i in range(len(polyline) - 1):
+                if valid[i] and valid[i + 1]:
+                    points.append(Point(x=float(polyline[i][0]),
+                                        y=float(polyline[i][1]), z=0.05))
+                    points.append(Point(x=float(polyline[i + 1][0]),
+                                        y=float(polyline[i + 1][1]), z=0.05))
+            if self._path.loop and valid[-1] and valid[0]:
+                points.append(Point(x=float(polyline[-1][0]),
+                                    y=float(polyline[-1][1]), z=0.05))
+                points.append(Point(x=float(polyline[0][0]),
+                                    y=float(polyline[0][1]), z=0.05))
+            marker.points = points
             array.markers.append(marker)
+
+        if folded_bands and not self._warned_folded_markers:
+            self._warned_folded_markers = True
+            self.get_logger().warn(
+                'corridor markers are drawn with gaps: %s fold where the '
+                'route turns tighter than the offset. The gaps are real -- '
+                'there is no usable corridor there. Re-teach those corners '
+                'more smoothly, or narrow the corridor.'
+                % ', '.join(folded_bands))
         self._marker_pub.publish(array)
 
     def _publish_lookahead_marker(self) -> None:

@@ -190,6 +190,32 @@ The robot description is shared: the sim includes the bringup xacro with
 `sim:=true`, which is the only thing that adds collision / inertia and makes
 the wheel joints `continuous`. Geometry stays in `config/chassis.yaml`.
 
+### Field validation dashboard
+
+[`outdoor_patrol_validation`](src/outdoor_patrol_validation) puts the whole
+alley procedure in
+[`doc/eng/plans/field-validation-alley.md`](doc/eng/plans/field-validation-alley.md)
+on one screen: RViz's 3D view, plus a docked panel with the live GNSS,
+heading, follower and lidar readouts and automatic pass/fail for every Phase
+0–7 gate.
+
+```bash
+ros2 launch outdoor_patrol_validation field_dashboard.launch.py
+```
+
+Most of the plan's gates are *temporal* — σ held for ten minutes, `d_cmd`
+**never** positive, never stationary more than 3 s — and none of those can be
+read off a scrolling `ros2 topic echo`. The node accumulates them, latches
+violations, and writes the markdown report the plan's "Bring home" section
+asks for.
+
+Rehearse it indoors first, against a synthetic stack that can reproduce the
+failures you cannot conjure outdoors:
+
+```bash
+ros2 launch outdoor_patrol_validation rehearsal.launch.py scenario:=heading_flip
+```
+
 ---
 
 ## How to use this template

@@ -81,3 +81,42 @@ services:
       - "use_rviz:=false"
       - "ntrip_params_file:=${NTRIP_PARAMS:-/opt/outdoor-patrol/install/share/ntrip_client/config/ntrip.yaml.example}"
       - "lidar_dev:=${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"
+
+  # Field validation dashboard, run ON THE ROBOT.
+  #
+  # Only the GATE LOGIC lives here; RViz and the panel run on the dev box and
+  # talk to this over /field_dashboard/{state,command}. Running it on the
+  # robot rather than the dev box is what makes teach-and-repeat work with
+  # nothing to copy: Phase 3 launches route_recorder here, so the route is
+  # written straight to /data/routes on the robot's own disk, which is
+  # exactly where route_follower reads it from.
+  #
+  # Not started by default -- bring it up only for a validation session:
+  #   docker compose -f deploy/docker-compose.yaml --profile validation up -d
+  #
+  # Reports land in /data/reports. Both survive container restarts via the
+  # ./data bind mount.
+  dashboard:
+    image: outdoor-patrol:arm64
+    container_name: outdoor-patrol-dashboard
+    profiles: ["validation"]
+    depends_on:
+      - robot
+    restart: unless-stopped
+    network_mode: host
+    ipc: host
+    environment:
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      ROS_LOCALHOST_ONLY: "0"
+    volumes:
+      - ./data:/data
+    # SITE picks the profile: alley (default) or driveway. They differ in
+    # route shape, corridor width and the retreat, not in anything safety
+    # related -- see the config headers.
+    command:
+      - "bash"
+      - "-lc"
+      - >-
+        ros2 run outdoor_patrol_validation field_dashboard --ros-args
+        --params-file /opt/outdoor-patrol/install/share/outdoor_patrol_validation/config/field_dashboard${SITE_SUFFIX:-}.yaml
+        -p site:=${SITE:-alley}

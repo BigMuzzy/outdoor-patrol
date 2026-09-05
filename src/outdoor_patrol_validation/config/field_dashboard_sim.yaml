@@ -1,0 +1,123 @@
+# Field validation dashboard -- GAZEBO SIM profile.
+#
+#   ros2 launch outdoor_patrol_validation field_dashboard.launch.py \
+#       params_file:=$(ros2 pkg prefix outdoor_patrol_validation)/share/outdoor_patrol_validation/config/field_dashboard_sim.yaml \
+#       site:=gazebo
+#
+# For driving the gates against outdoor_patrol_sim rather than the robot. The
+# stack is identical -- same topics, same frames, no remaps -- so only two
+# kinds of thing change here.
+#
+# 1. THE SIM HAS NO NMEA AND NO RTCM.
+#
+#    gnss_sim synthesises a NavSatFix directly from ground truth; there is no
+#    receiver and so no raw sentences. Everything derived from GGA is
+#    therefore blank: satellite count, HDOP, correction age, base station ID.
+#    Those are INFO rows, so nothing gates on them.
+#
+#    The one gate that would have cared is Phase 3's "worst fix: fixed". It
+#    now classifies from the NavSatFix status and sigma, which is what
+#    route_recorder itself does -- so it works here AND is a more faithful
+#    prediction of the route file on the real robot. No override needed.
+#
+# 2. THE TIMINGS ARE IMPATIENT.
+#
+#    A 10 minute soak proves something about a physical site. In a simulator
+#    with a constant synthetic sigma it proves that the number is constant, so
+#    it is shortened to 60 s here. DO NOT carry this to the field: that hold
+#    IS the gate.
+#
+# Everything else -- the 5 cm confidence gate, the sigma ramp, the lever arm,
+# the heading tolerance -- is left exactly as the robot has it. Those are
+# properties of the machine, and the whole value of the sim is checking them
+# without changing them.
+field_dashboard:
+  ros__parameters:
+    fix_topic: /um982_driver/fix
+    fix_gated_topic: /gnss/fix_gated
+    # Declared but never published by the sim. Harmless: the subscription
+    # simply stays silent and the GGA tiles read "from covariance (no NMEA)".
+    nmea_topic: /um982_driver/nmea_sentence
+    rtcm_topic: /rtcm
+    heading_topic: /gnss/heading
+    odom_topic: /odometry/global
+    status_topic: /route_follower/status
+    scan_topic: /scan
+    cmd_topic: /cmd_vel
+    fromll_service: /fromLL
+
+    map_frame: map
+    base_frame: base_link
+
+    publish_rate_hz: 5.0
+    site: gazebo
+    report_dir: runs/sim
+    lever_arm_max_speed_ms: 0.1
+    fromll_timeout_s: 5.0
+    # The sim's gpu_lidar is spawned through the same xacro as the robot, so
+    # it carries the same yaw-180 mount.
+    scan_forward_offset_deg: 180.0
+
+    # -- managed nodes --------------------------------------------------
+    # Phase 3 Start records for real and Stop saves; Phase 5/6 Start drives
+    # the route just recorded. manage_follower is TRUE here and false in the
+    # field profiles: in a simulator nothing can be hurt by the robot setting
+    # off, so the panel may drive the whole procedure.
+    manage_recorder: true
+    manage_follower: true
+    # The sim publishes /clock. Without this the recorder and follower run on
+    # wall time and disagree with the EKF about when everything happened.
+    child_use_sim_time: true
+    route_dir: runs/routes
+    follower_speed_ms: 0.5
+    # Starting values for the panel's tuning box. Editable there before a run
+    # -- the dashboard hands them to the follower when it launches one.
+    follower_corridor_m: 3.0
+    follower_avoidance: true
+    # Display only: the lane/corridor bands. Green route and look-ahead
+    # point are drawn either way.
+    follower_show_corridor: true
+    # Empty -> the follower drives the last route Phase 3 saved, which is
+    # what makes teach-then-repeat work without retyping paths.
+    route_path: ''
+    # Parameters handed to route_recorder and route_follower. Package-
+    # relative: <package>/<file>. Leaving this empty makes them fall back to
+    # route_recorder's own defaults (2.0 m lane, loop: true), which is NOT
+    # what this site wants.
+    route_params_file: 'outdoor_patrol_route/route.yaml'
+
+    thresholds:
+      bringup_hold_s: 10.0
+
+      # --- unchanged from the robot: this is what the sim is for ---
+      sigma_gate_m: 0.05
+      sigma_slow_m: 0.05
+      sigma_stop_m: 0.15
+      lever_arm_x_m: 0.28
+      lever_arm_y_m: -0.42
+      lever_arm_tolerance_m: 0.15
+      heading_tolerance_deg: 10.0
+      heading_probe_distance_m: 2.0
+      max_cross_track_m: 0.5
+      lane_keeping_d_cmd_m: 0.2
+      obstacle_full_retreat_m: 1.0
+      resume_within_m: 10.0
+      max_stationary_s: 3.0
+      min_obstacle_clearance_m: 0.3
+      teach_sample_dist_m: 1.0
+      teach_sample_yaw_deg: 5.0
+      loop_closure_tolerance_m: 3.0
+      teach_expect_loop: either
+
+      # --- shortened for a simulator, NOT for the field ---
+      soak_hold_s: 60.0
+      teach_min_length_m: 10.0
+      teach_min_samples: 10
+
+      # patrol_road.sdf is open ground: the lidar sees nothing for most of a
+      # lap, which is maximum clearance rather than missing data. Left at 0
+      # so the gate does not imply walls that are not there.
+      min_wall_clearance_m: 0.0
+
+      nominal_speed_ms: 0.8
+      stopped_speed_ms: 0.05

@@ -1,0 +1,121 @@
+# Field validation dashboard -- DRIVEWAY SHAKEDOWN profile.
+#
+#   ros2 launch outdoor_patrol_validation field_dashboard.launch.py \
+#       params_file:=$(ros2 pkg prefix outdoor_patrol_validation)/share/outdoor_patrol_validation/config/field_dashboard_driveway.yaml \
+#       site:=driveway
+#
+# Same stack, same thresholds that matter, different ROUTE SHAPE. Pair it with
+# route_driveway.yaml.
+#
+# Everything safety-related is unchanged from the alley on purpose --
+# sigma_gate_m, sigma_slow_m, sigma_stop_m and the lever arm are properties of
+# the robot and its receiver, not of the site. Only the three numbers that
+# describe the shape of the route move.
+#
+# Phases that apply here: 0, 1, 2, 3, 4, 5.
+# Phase 6 (obstacle) and Phase 7 (GNSS fault) need the alley -- there is no
+# room on a driveway for a 2.4 m barrier plus a retreat.
+field_dashboard:
+  ros__parameters:
+    fix_topic: /um982_driver/fix
+    fix_gated_topic: /gnss/fix_gated
+    nmea_topic: /um982_driver/nmea_sentence
+    rtcm_topic: /rtcm
+    heading_topic: /gnss/heading
+    odom_topic: /odometry/global
+    status_topic: /route_follower/status
+    scan_topic: /scan
+    cmd_topic: /cmd_vel
+    fromll_service: /fromLL
+
+    map_frame: map
+    base_frame: base_link
+
+    publish_rate_hz: 5.0
+    site: driveway
+    report_dir: /data/reports
+    lever_arm_max_speed_ms: 0.1
+    fromll_timeout_s: 5.0
+    scan_forward_offset_deg: 180.0
+
+    # -- managed nodes --------------------------------------------------
+    # Phase 3 Start launches route_recorder and Stop SAVES it. Without this a
+    # teach pass records nothing and the drive is lost.
+    manage_recorder: true
+    # Phase 5/6 do NOT launch the follower here. Starting it moves the robot,
+    # and outdoors that must stay a deliberate act by whoever is holding the
+    # kill switch. Launch it yourself; the panel tells you the command.
+    manage_follower: false
+    child_use_sim_time: false
+    # ON THE ROBOT. This node is meant to run inside the deploy container,
+    # where /data is the bind-mounted host directory -- so a teach pass is
+    # recorded and saved on the robot's own disk and there is nothing to copy
+    # before following it. Running the dashboard on the dev box instead would
+    # write the route there, and the follower on the robot could not see it.
+    route_dir: /data/routes
+    follower_speed_ms: 0.3
+    # Seeds the panel's tuning box; matches this site's route profile.
+    follower_corridor_m: 0.55
+    follower_avoidance: true
+    # Display only: the lane/corridor bands. Green route and look-ahead
+    # point are drawn either way.
+    follower_show_corridor: true
+    route_path: ''
+    # Parameters handed to route_recorder and route_follower. Package-
+    # relative: <package>/<file>. Leaving this empty makes them fall back to
+    # route_recorder's own defaults (2.0 m lane, loop: true), which is NOT
+    # what this site wants.
+    route_params_file: 'outdoor_patrol_route/route_driveway.yaml'
+
+    thresholds:
+      bringup_hold_s: 10.0
+
+      # --- unchanged from the alley: these are the robot, not the site ---
+      sigma_gate_m: 0.05
+      sigma_slow_m: 0.05
+      sigma_stop_m: 0.15
+      lever_arm_x_m: 0.28
+      lever_arm_y_m: -0.42
+      lever_arm_tolerance_m: 0.15
+      heading_tolerance_deg: 10.0
+
+      # A driveway beside a garage has a worse sky view than the middle of an
+      # alley. Ten minutes is still the right soak -- shorten it and you have
+      # not tested the thing that fails. If it cannot hold a fix HERE, you
+      # have learned something valuable for the price of a walk outside.
+      soak_hold_s: 60.0
+
+      # --- the three that actually change: route shape ---
+      # A 3.5 m box with 1 m fillets is ~12 m round, not 30.
+      teach_min_length_m: 10.0
+      # But it records MORE stations than the alley, not fewer: four 90 deg
+      # corners at a 5 deg yaw trigger are ~72 stations on their own.
+      teach_min_samples: 40
+      # It is a circuit. Demanding 'open' here fails a correct route.
+      teach_expect_loop: loop
+      loop_closure_tolerance_m: 1.0
+
+      # The square is only 3.5 m across, so 2 m of forward travel is over half
+      # a side. Take the heading fix on one of the straights.
+      heading_probe_distance_m: 1.5
+
+      # No retreat on a driveway (see route_driveway.yaml), so the follower
+      # should hold the taught line the whole way round. Tighter than the
+      # alley because there is no obstacle to excuse a deviation.
+      max_cross_track_m: 0.35
+      lane_keeping_d_cmd_m: 0.05
+      # There is no wall -- the driveway edge is the limit, and the lidar sees
+      # the garage, cars and whatever else is around. Do not gate on it.
+      min_wall_clearance_m: 0.0
+
+      nominal_speed_ms: 0.3
+      stopped_speed_ms: 0.05
+
+      # Phase 6 is not run here; these are left at the alley values so the
+      # file stays a complete profile rather than a partial one.
+      obstacle_full_retreat_m: 1.0
+      resume_within_m: 10.0
+      max_stationary_s: 3.0
+      min_obstacle_clearance_m: 0.3
+      teach_sample_dist_m: 1.0
+      teach_sample_yaw_deg: 5.0

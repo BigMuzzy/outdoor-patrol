@@ -1,0 +1,12 @@
+<library path="field_dashboard_panel">
+  <class name="outdoor_patrol_validation/FieldDashboardPanel"
+         type="outdoor_patrol_validation::FieldDashboardPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      One-screen field validation dashboard. Live GNSS, heading, follower and
+      lidar readouts plus automatic pass/fail for the Phase 0-7 gates of
+      doc/eng/plans/field-validation-alley.md. Driven by the field_dashboard
+      node; the panel itself only renders and sends button presses.
+    </description>
+  </class>
+</library>

@@ -1,0 +1,118 @@
+# Teach-and-repeat parameters for a SMALL SQUARE CIRCUIT on a driveway.
+#
+# Sized for an 18 x 18 ft (5.49 m) driveway, driven as a rounded square
+# 3.5 m across with 1.0 m corner fillets -- about 12 m of perimeter.
+#
+#   driveway edge                                        driveway edge
+#   -2.74 ------------------------ 0.00 ------------------------ +2.74
+#            |<-- route at -1.75      route at +1.75 -->|
+#            robot edge at -2.05, so 0.69 m to the edge
+#
+# This is a SHAKEDOWN, not a patrol. It exists to prove four things that a
+# straight line cannot, before you spend three hours in an alley:
+#
+#   1. Heading is right at ALL FOUR cardinal directions, not just one. A
+#      straight teach pass can hide a yaw_offset error that is wrong by 90
+#      deg; a square cannot -- the repeat comes out visibly rotated.
+#   2. Corners work. The spline, the yaw sampling trigger and pure pursuit
+#      all behave differently on a 1 m fillet than on a straight.
+#   3. The route closes. Drive back to where you started and the gap between
+#      start and finish is a DIRECT measurement of localization drift over a
+#      lap -- no ground truth required, just the same patch of ground twice.
+#   4. It repeats. Run several laps and watch whether the drift accumulates.
+#
+# ---------------------------------------------------------------------------
+# THE RETREAT IS DELIBERATELY DISABLED HERE. This is the important part.
+# ---------------------------------------------------------------------------
+#
+# An 18 ft driveway has no room for one, in either direction:
+#
+#   driving anticlockwise, `right` points OUTWARD -- the offset lane is well
+#   behaved (74-87% of centerline arc length), but a 0.6 m retreat puts the
+#   robot's outer edge 2.65 m out against a 2.74 m edge. Nine centimetres.
+#   A 1.2 m retreat drives it off the driveway entirely.
+#
+#   driving clockwise, `right` points INWARD, which fits -- but it is the
+#   inside of every corner, so the offset lane collapses to 7% of the
+#   centerline arc length at 0.6 m, and INVERTS at 1.2 m. route_follower
+#   refuses that one at start-up; it would steer into the corner.
+#
+# So: corridor_half_width_m = clearance_half_width_m, which leaves exactly one
+# candidate offset (0.0) and no retreat. Obstacle avoidance needs the alley's
+# 4 m width. Prove teach-and-repeat here; prove the retreat there.
+/**:
+  ros__parameters:
+    source: odometry_global
+    odom_topic: /odometry/global
+    fix_topic: /um982_driver/fix
+    output_path: route.yaml
+
+    # Distance trigger as usual. The yaw trigger is what actually samples the
+    # corners: at 5 deg it drops a station every 8.7 cm round a 1 m fillet,
+    # so a 12 m square records ~80 stations, most of them on the four bends.
+    sample_dist_m: 1.0
+    sample_yaw_deg: 5.0
+
+    # A circuit, unlike the alley. Drive it back to the start.
+    loop: true
+    # 3.0 m (the alley value) is comparable to the whole square here -- it
+    # would call three quarters of a lap "closed". 1.0 m is tight enough to
+    # mean something on a 3.5 m box and loose enough for an RTK fix.
+    loop_closure_tolerance_m: 1.0
+
+    # Half a metre of lane either side of the taught line, which is all the
+    # driveway can give once the robot's own 0.30 m half-width is taken out.
+    lane_half_width_m: 0.5
+    shoulder_left_m: 0.3
+    shoulder_right_m: 0.3
+
+    warn_below_fix: fixed
+
+    base_frame: base_link
+    antenna_frame: gnss_link
+    toll_service: /toLL
+    toll_timeout_s: 5.0
+
+route_follower:
+  ros__parameters:
+    odom_topic: /odometry/global
+    fix_topic: /um982_driver/fix
+    scan_topic: /scan
+    cmd_topic: /cmd_vel_raw
+    control_period_s: 0.05
+
+    # Slower than the alley. The corners are 1 m fillets, which is at the
+    # tight end of what pure pursuit tracks well, and a shorter look-ahead
+    # follows them more faithfully. Measured: a 1 m corner tracks to 0.23 m
+    # of cross-track at these settings.
+    nominal_speed_ms: 0.3
+    min_speed_ms: 0.12
+    lookahead_min_m: 0.8
+    lookahead_gain_s: 1.0
+    lookahead_max_m: 1.5
+    max_angular_rads: 0.67
+    curvature_speed_gain: 1.0
+    goal_tolerance_m: 0.5
+    # One lap to start. Raise it to watch drift accumulate: the interesting
+    # number is whether lap 4 closes as well as lap 1.
+    laps: 1.0
+
+    # No retreat -- see the header. corridor == clearance leaves exactly one
+    # candidate offset, 0.0, so the follower tracks the taught line and
+    # nothing else. scan_safety still brakes for anything in front.
+    retreat_side: right
+    corridor_half_width_m: 0.55
+    clearance_half_width_m: 0.55
+    offset_step_m: 0.6
+    trigger_range_m: 4.0
+    resume_clear_cycles: 20
+    ramp_lateral_per_m: 0.6
+
+    # Same fix quality the alley demands. A driveway beside a garage has
+    # worse sky view than open ground -- if it cannot hold RTK here, that is
+    # worth knowing before the alley, not after.
+    sigma_slow_m: 0.05
+    sigma_stop_m: 0.15
+    fix_timeout_s: 2.0
+
+    publish_markers: true

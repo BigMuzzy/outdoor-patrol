@@ -27,6 +27,74 @@ would drive into one.
 
 ---
 
+## Run it from the dashboard
+
+Everything below can be watched by hand with `ros2 topic echo`, and the raw
+commands are kept in each phase so you can. But most of these gates are
+*temporal* — σ held for ten minutes, `d_cmd` never positive, never stationary
+more than 3 s — and those cannot be read off a scrolling terminal while
+standing next to a moving robot.
+
+[`outdoor_patrol_validation`](../../../src/outdoor_patrol_validation) puts the
+whole procedure on one screen and accumulates them for you:
+
+```bash
+ros2 launch outdoor_patrol_validation field_dashboard.launch.py
+```
+
+Select a phase, do what it says, press Start. It latches violations, tells you
+what to do about a red gate, and writes the report at the end.
+
+Rehearse it on the bench first — the failures this plan warns about are
+scripted, so you can see each one go red before you rely on it:
+
+```bash
+ros2 launch outdoor_patrol_validation rehearsal.launch.py scenario:=heading_flip
+```
+
+---
+
+## Warm up on a driveway first
+
+Optional, about an hour, and it buys down most of the risk in Phases 2–5
+before you commit to a three-hour trip.
+
+Teach a **3.5 m square with 1 m rounded corners** on a driveway (18 × 18 ft is
+enough) and drive it as a closed circuit. It tests three things this alley
+procedure cannot:
+
+* **Heading in all four directions.** The alley is one straight line, so a
+  `yaw_offset` that is wrong by 90° tracks it about as well as a correct one.
+  A square does not: the repeat comes out visibly rotated. Phase 2 here is
+  strictly stronger than Phase 2 in the alley.
+* **Corners.** Nothing in the alley bends.
+* **Drift, measured directly.** Come back to where you started and the gap is
+  the localization error over a lap. Phase 5 reports it as *distance from
+  start*. Several laps tell you whether it accumulates.
+
+```bash
+ros2 launch outdoor_patrol_validation field_dashboard.launch.py \
+    params_file:=$(ros2 pkg prefix outdoor_patrol_validation)/share/outdoor_patrol_validation/config/field_dashboard_driveway.yaml \
+    site:=driveway
+```
+
+with [`route_driveway.yaml`](../../../src/outdoor_patrol_route/config/route_driveway.yaml)
+for the recorder and follower.
+
+**Do not reuse `route_alley.yaml` on a driveway.** Its 1.2 m retreat is wider
+than a 1 m corner, so the offset lane inverts and the follower would steer into
+the corner rather than around it. `route_follower` refuses it at start-up with
+an explanation, but the right answer is the driveway config, which disables the
+retreat: an 18 ft slab has no room for one in either direction. Driving
+anticlockwise puts the retreat outside the square and off the concrete;
+clockwise puts it inside every corner, where it folds. Obstacle avoidance is
+what the alley's 4 m is for.
+
+Phases 6 and 7 still need the alley. Everything else transfers, and a failure
+found on a driveway costs a walk outside rather than a day.
+
+---
+
 ## The alley, in numbers
 
 Everything below assumes you drive down the **middle** of the alley. Measure

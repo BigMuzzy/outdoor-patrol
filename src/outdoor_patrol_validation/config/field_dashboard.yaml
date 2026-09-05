@@ -1,0 +1,106 @@
+# Field validation dashboard -- topics and gate thresholds.
+#
+# The defaults here are the ALLEY values, and they are the same numbers the
+# stack itself is configured with:
+#
+#   thresholds.sigma_gate_m   confidence_gate.yaml  max_horizontal_sigma_m
+#   thresholds.sigma_slow_m   route_alley.yaml      route_follower.sigma_slow_m
+#   thresholds.sigma_stop_m   route_alley.yaml      route_follower.sigma_stop_m
+#   thresholds.lever_arm_*    chassis.yaml          gnss_link xyz
+#   thresholds.teach_sample_* route_alley.yaml      sample_dist_m / _yaw_deg
+#
+# Keep them in step. A dashboard that passes a gate the robot fails is worse
+# than no dashboard: the plan's whole point is that these numbers are walls,
+# not dials. If your site is not a 4 m alley, re-derive them there first and
+# then mirror the result here.
+field_dashboard:
+  ros__parameters:
+    fix_topic: /um982_driver/fix
+    fix_gated_topic: /gnss/fix_gated
+    nmea_topic: /um982_driver/nmea_sentence
+    rtcm_topic: /rtcm
+    heading_topic: /gnss/heading
+    odom_topic: /odometry/global
+    status_topic: /route_follower/status
+    scan_topic: /scan
+    cmd_topic: /cmd_vel
+    fromll_service: /fromLL
+
+    map_frame: map
+    base_frame: base_link
+
+    publish_rate_hz: 5.0
+    site: alley
+    report_dir: /data/reports
+    lever_arm_max_speed_ms: 0.1
+    fromll_timeout_s: 5.0
+    # Bearing of ROBOT-FORWARD in the raw /scan frame. The C1 is mounted
+    # yaw-180, so robot-forward is at 180 deg. This node reads raw scan angles
+    # (it does not use TF), so this MUST match the lidar_link yaw in
+    # outdoor_patrol_bringup/config/chassis.yaml -- same rule, and same
+    # number, as scan_safety's forward_offset_deg. Wrong here and the front
+    # and rear sectors swap without any error.
+    scan_forward_offset_deg: 180.0
+
+    # -- managed nodes --------------------------------------------------
+    # Phase 3 Start launches route_recorder and Stop SAVES it. Without this a
+    # teach pass records nothing and the drive is lost.
+    manage_recorder: true
+    # Phase 5/6 do NOT launch the follower here. Starting it moves the robot,
+    # and outdoors that must stay a deliberate act by whoever is holding the
+    # kill switch. Launch it yourself; the panel tells you the command.
+    manage_follower: false
+    child_use_sim_time: false
+    # ON THE ROBOT. This node is meant to run inside the deploy container,
+    # where /data is the bind-mounted host directory -- so a teach pass is
+    # recorded and saved on the robot's own disk and there is nothing to copy
+    # before following it. Running the dashboard on the dev box instead would
+    # write the route there, and the follower on the robot could not see it.
+    route_dir: /data/routes
+    follower_speed_ms: 0.4
+    # Seeds the panel's tuning box; matches this site's route profile.
+    follower_corridor_m: 1.8
+    follower_avoidance: true
+    # Display only: the lane/corridor bands. Green route and look-ahead
+    # point are drawn either way.
+    follower_show_corridor: true
+    route_path: ''
+    # Parameters handed to route_recorder and route_follower. Package-
+    # relative: <package>/<file>. Leaving this empty makes them fall back to
+    # route_recorder's own defaults (2.0 m lane, loop: true), which is NOT
+    # what this site wants.
+    route_params_file: 'outdoor_patrol_route/route_alley.yaml'
+
+    thresholds:
+      # Phase 0
+      bringup_hold_s: 10.0
+      # Phase 1 -- the go/no-go
+      sigma_gate_m: 0.05
+      soak_hold_s: 600.0
+      # Phase 2
+      heading_tolerance_deg: 10.0
+      heading_probe_distance_m: 2.0
+      # Phase 3
+      teach_sample_dist_m: 1.0
+      teach_sample_yaw_deg: 5.0
+      teach_min_samples: 25
+      teach_min_length_m: 20.0
+      loop_closure_tolerance_m: 3.0
+      # Phase 4 -- chassis.yaml gnss_link xyz "0.28 -0.42 0.18"
+      lever_arm_x_m: 0.28
+      lever_arm_y_m: -0.42
+      lever_arm_tolerance_m: 0.15
+      # Phase 5
+      max_cross_track_m: 0.5
+      min_wall_clearance_m: 1.0
+      lane_keeping_d_cmd_m: 0.2
+      # Phase 6
+      obstacle_full_retreat_m: 1.0
+      resume_within_m: 10.0
+      max_stationary_s: 3.0
+      min_obstacle_clearance_m: 0.3
+      # Phase 7
+      sigma_slow_m: 0.05
+      sigma_stop_m: 0.15
+      nominal_speed_ms: 0.4
+      stopped_speed_ms: 0.05

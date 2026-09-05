@@ -132,6 +132,93 @@ the distance-parameterised ramp stops advancing too. Stuck, safely, forever.
 This was observed, not theorised; `route_follower` now checks the pair at
 start-up and logs an error if it cannot work.
 
+## What path shapes can you teach?
+
+Most of them. Measured against the real `Path` and a replay of
+`route_follower._pursue`:
+
+| Corner radius | Path reproduces the stations | Pure pursuit tracks within |
+|---|---|---|
+| 10 m | 0.00 m | 0.03 m |
+| 3 m | 0.02 m | 0.09 m |
+| 1.5 m | 0.09 m | 0.16 m |
+| 1.0 m | 0.06 m | 0.23 m |
+| 0.7 m | — | 0.29 m |
+
+Corners down to about a metre, hairpins, closed loops and figure-eights all
+work. The recorder's 5° yaw trigger is what makes tight geometry survive: on a
+1 m corner it drops a station every 8.7 cm, so the spline has plenty to work
+with even though the distance trigger is 1 m.
+
+Three limits are real:
+
+**It never reverses.** The commanded speed is floored at `min_speed_ms` and is
+always positive, so the route has to be drivable as one continuous forward
+motion. No three-point turns, no backing out of a dead end, no pivoting on the
+spot. You can *record* a teach pass that reverses; the follower cannot
+reproduce it.
+
+**Corners want to be ≥ 1 m radius.** Pure pursuit cuts across anything much
+tighter than its `lookahead_min_m` (1.0–1.2 m). The hard geometric floor from
+`min_speed_ms / max_angular_rads` is 0.22 m, but tracking is well outside spec
+long before that.
+
+**The retreat lane folds on tight inside corners.** This is the one that is
+easy to miss. The retreat is a lateral displacement along the path normal, so
+the lane it steers to is the centerline offset by `d` — and on the *inside* of
+a bend that offset curve shrinks. Once `|d|` reaches the corner radius it
+collapses to a cusp and then inverts, and `offset_at` still returns a point, so
+the look-ahead silently jumps behind the robot and pure pursuit steers it into
+the corner it was avoiding.
+
+`route_follower` now checks this at start-up, against the route it just loaded:
+
+```
+retreat geometry vs route: widest offset -1.20 m against a 4.04 m tightest
+                           right-hand corner at s=17.3 m (70% lane left)
+```
+
+and refuses one that cannot work:
+
+```
+retreat lane is unusable: offsetting -1.20 m inverts the path at s=15.2 m,
+  where the route turns with a 0.50 m radius. The look-ahead point would jump
+  behind the robot and steer it INTO the corner. Reduce corridor_half_width_m
+  below 1.05 m, or re-teach that corner wider.
+```
+
+Only the retreat side is checked. Offsets on the outside of a bend stretch
+rather than shrink, so they can never fold.
+
+## Retuning while it runs
+
+These are settable with `ros2 param set` on a running `route_follower`, or
+from the field dashboard's **Follower (live)** box:
+
+| Parameter | Why you would change it mid-run |
+|---|---|
+| `avoidance_enabled` | **off = track the taught line only.** For measuring what localization alone can do, with no retreat manoeuvres in the cross-track. |
+| `nominal_speed_ms`, `min_speed_ms`, `max_angular_rads` | too fast for the corner you just watched it cut |
+| `corridor_half_width_m`, `offset_step_m`, `clearance_half_width_m` | the corridor is wider than the route's tightest corner (offsets are recomputed) |
+| `trigger_range_m`, `ramp_lateral_per_m`, `resume_clear_cycles` | retreat starting too late or too abruptly |
+| `sigma_slow_m`, `sigma_stop_m`, `fix_timeout_s` | **think hard first** -- these are what stop it driving on a fix it cannot trust |
+| `laps`, `retreat_side` | |
+| `show_corridor` | **display only** -- hide the lane/corridor bands when folded offsets clutter the view. The centerline and look-ahead point stay. |
+
+Several of these are cached at start-up rather than read every cycle, so the
+node re-caches them through a set-parameters callback. Without that,
+`ros2 param set` would appear to work and change nothing.
+
+Values are validated: a negative speed or an unknown `retreat_side` is
+rejected with a reason rather than accepted and ignored.
+
+`avoidance_enabled: false` does **not** disable the forward safety brake --
+`scan_safety` is a separate node on `/cmd_vel` and still stops the robot. It
+only stops the follower steering around obstacles.
+
+Structural parameters (`route_path`, frames, `control_period_s`) are not
+live: changing them would need the path or the timers rebuilt.
+
 ## Tests
 
 ```bash
