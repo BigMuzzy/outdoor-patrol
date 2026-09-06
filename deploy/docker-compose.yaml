@@ -113,6 +113,15 @@ services:
     # SITE picks the profile: alley (default) or driveway. They differ in
     # route shape, corridor width and the retreat, not in anything safety
     # related -- see the config headers.
+    #
+    # MANAGE_FOLLOWER lets Phase 5/6 Start launch route_follower from the
+    # panel instead of you launching it by hand. It defaults to false, and
+    # that default is the safety property: pressing Start in RViz with this
+    # on SETS THE ROBOT MOVING. Both field profiles ship false on purpose.
+    # Opt in per session in deploy/.env (MANAGE_FOLLOWER=true) so the choice
+    # is made per site by whoever is holding the kill switch -- this service
+    # is shared with the alley, where the walls are 2.00 m from the
+    # centerline and an unexpected start has nowhere to go.
     command:
       - "bash"
       - "-lc"
@@ -120,3 +129,4 @@ services:
         ros2 run outdoor_patrol_validation field_dashboard --ros-args
         --params-file /opt/outdoor-patrol/install/share/outdoor_patrol_validation/config/field_dashboard${SITE_SUFFIX:-}.yaml
         -p site:=${SITE:-alley}
+        -p manage_follower:=${MANAGE_FOLLOWER:-false}

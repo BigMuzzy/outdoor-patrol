@@ -383,6 +383,21 @@ If you would rather Phase 5 launch it for you — one button, no ssh — set
 `manage_follower: true` in the profile. Understand what that changes: pressing
 Start in RViz will set the robot moving.
 
+On the deployed robot you can flip it for a single session without rebuilding
+the image. The compose `dashboard` service passes
+`-p manage_follower:=${MANAGE_FOLLOWER:-false}`, which overrides the profile,
+so it is enough to set it in `deploy/.env` and recreate the container:
+
+```bash
+ssh robot 'cd ~/code/outdoor-patrol && echo MANAGE_FOLLOWER=true >> deploy/.env && \
+  docker compose -f deploy/docker-compose.yaml --profile validation up -d dashboard'
+```
+
+The default stays `false` because that service is shared by both sites, and
+the alley has walls 2.00 m from the centerline. Confirm which mode you are in
+from the panel's managed-process line: it reads `follower: idle` when the
+panel may launch it and `follower: manual` when it may not.
+
 ### The robot image does not build the panel
 
 `CMakeLists.txt` builds the RViz panel only when `rviz_common` and Qt5 are
