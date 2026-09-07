@@ -280,6 +280,19 @@ noted against each.
    replan on a 186 s run). Any future world of a different size needs the
    gates restated as fractions of *its* geometry, not the numbers inherited
    from the 100 m road.
+8. **The dev box and the robot share ROS domain 0.** Found while verifying
+   the telemetry: a `ros2 node list` on the dev box returned `/esp32_drive`,
+   `/um982_driver`, `/sllidar_node` and the rest — the robot's own containers,
+   discovered over the network. `/esp32_drive` subscribes to `/cmd_vel`, and
+   a sim run publishes `/cmd_vel`, so **any sim run on the default domain can
+   command the real chassis.** No harm occurred: the drivetrain was powered
+   off, and `run_validation.sh`'s stale-node check refused to start the run —
+   that check is load-bearing, not a formality.
+
+   Run the sim under an explicit `ROS_DOMAIN_ID` (42 was used here) whenever
+   the robot may be powered. The deploy compose deliberately stays on the
+   default domain so the dev box can see it, which is exactly why the stock
+   containers have to be stopped rather than left running alongside.
 
 ## Log
 
