@@ -1,0 +1,160 @@
+# Nav2 field-test compose — runs BESIDE the stock deploy/docker-compose.yaml
+# without colliding with it.
+#
+# Why a separate file rather than a profile in the main one: the main compose
+# builds `outdoor-patrol:arm64`, and BOTH containers on the robot
+# (outdoor-patrol, outdoor-patrol-dashboard) run from that tag. Building the
+# Nav2 branch under the same tag would silently re-image them on their next
+# restart, which is not "deploying alongside" -- it is replacing them without
+# saying so. Everything here is tagged `outdoor-patrol:nav2` and named
+# `*-nav2` instead.
+#
+# ⚠️  DDS: every service below is `network_mode: host` on the default ROS
+# domain, exactly like the stock compose. That is deliberate -- the dev box
+# needs to see these topics -- but it means the stock `outdoor-patrol`
+# container MUST BE STOPPED first. Two bringups on one graph is two
+# /cmd_vel publishers and two micro-ROS agents fighting over one serial
+# device. Stop them with:
+#
+#   docker compose -f deploy/docker-compose.yaml down
+#
+# ── Field session ──────────────────────────────────────────────────────────
+#
+#   # 0. once, to build
+#   docker compose -f deploy/docker-compose.nav2.yaml build
+#
+#   # 1. sensors + localization only. Drive it with teleop and confirm the
+#   #    GNSS is healthy in rqt_robot_monitor BEFORE recording anything.
+#   docker compose -f deploy/docker-compose.nav2.yaml up -d robot
+#
+#   # 2. record a route: start the recorder, drive the loop with teleop,
+#   #    then save. The route lands in ./data/routes on the robot's disk.
+#   docker compose -f deploy/docker-compose.nav2.yaml --profile record up -d
+#   ros2 service call /route_recorder/save std_srvs/srv/Trigger
+#
+#   # 3. stop the recorder, then follow the route autonomously.
+#   docker compose -f deploy/docker-compose.nav2.yaml stop recorder
+#   docker compose -f deploy/docker-compose.nav2.yaml --profile nav2 up -d
+#
+# On the DEV BOX, all stock tools:
+#   ros2 launch outdoor_patrol_bringup rviz.launch.py \
+#     rviz_config:=$(ros2 pkg prefix outdoor_patrol_nav)/share/outdoor_patrol_nav/config/field.rviz
+#   ros2 run rqt_robot_monitor rqt_robot_monitor      # GNSS + mission health
+#   ros2 run rqt_plot rqt_plot /patrol_mission/cross_track_m/data
+#   ros2 run rqt_service_caller rqt_service_caller    # save/discard the route
+
+x-common: &common
+  image: outdoor-patrol:nav2
+  restart: unless-stopped
+  network_mode: host
+  ipc: host
+  environment: &common-env
+    RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+    ROS_LOCALHOST_ONLY: "0"
+  volumes:
+    - ./data:/data
+
+services:
+  # Sensors, localization and the safety brake. Same launch as the stock
+  # compose -- this is not the part the Nav2 migration changes.
+  robot:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      platforms:
+        - linux/arm64
+    container_name: outdoor-patrol-nav2
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    environment:
+      <<: *common-env
+      SERIAL_DEV: "${SERIAL_DEV:-/dev/ttyACM0}"
+      SERIAL_BAUD: "${SERIAL_BAUD:-115200}"
+    devices:
+      - "${SERIAL_DEV:-/dev/ttyACM0}:${SERIAL_DEV:-/dev/ttyACM0}"
+      - "${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}:${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}"
+      - "${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}:${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}"
+      - "${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}:${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"
+    group_add:
+      - dialout
+    stdin_open: true
+    tty: true
+    command:
+      - "ros2"
+      - "launch"
+      - "outdoor_patrol_bringup"
+      - "gnss_localization.launch.py"
+      - "serial_dev:=${SERIAL_DEV:-/dev/ttyACM0}"
+      - "serial_baud:=${SERIAL_BAUD:-115200}"
+      - "use_rviz:=false"
+      - "ntrip_params_file:=${NTRIP_PARAMS:-/opt/outdoor-patrol/install/share/ntrip_client/config/ntrip.yaml.example}"
+      - "lidar_dev:=${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"
+
+  # Teach pass. Not started by default: it records from the moment it comes
+  # up, so bringing it up by accident quietly accumulates a route nobody
+  # asked for. `restart: no` for the same reason -- if it dies mid-teach the
+  # right answer is to notice, not to silently start a fresh recording.
+  #
+  # Writes to /data/routes on the host bind mount, which is the same disk
+  # patrol_mission reads from, so there is nothing to copy between steps.
+  recorder:
+    <<: *common
+    container_name: outdoor-patrol-recorder-nav2
+    profiles: ["record"]
+    restart: "no"
+    depends_on:
+      - robot
+    command:
+      - "bash"
+      - "-lc"
+      - >-
+        mkdir -p /data/routes &&
+        ros2 run outdoor_patrol_route route_recorder --ros-args
+        -r __node:=route_recorder
+        -p source:=odometry_global
+        -p output_path:=/data/routes/${ROUTE_NAME:-driveway}.yaml
+        -p loop:=${ROUTE_LOOP:-true}
+        -p sample_dist_m:=${ROUTE_SAMPLE_DIST:-0.5}
+        -p lane_half_width_m:=${LANE_HALF_WIDTH:-0.6}
+        -p shoulder_left_m:=${SHOULDER_LEFT:-0.2}
+        -p shoulder_right_m:=${SHOULDER_RIGHT:-0.2}
+
+  # Nav2 servers. Separate from the mission so the stack can be brought up
+  # and inspected (RViz costmaps, a manual 2D Goal Pose) before anything
+  # starts driving a route.
+  nav2:
+    <<: *common
+    container_name: outdoor-patrol-nav2-stack
+    profiles: ["nav2"]
+    depends_on:
+      - robot
+    command:
+      - "ros2"
+      - "launch"
+      - "outdoor_patrol_nav"
+      - "nav2.launch.py"
+      - "params_file:=${NAV_PARAMS:-/opt/outdoor-patrol/install/share/outdoor_patrol_nav/config/nav2_params_driveway.yaml}"
+      - "bt_xml:=${BT_XML:-/opt/outdoor-patrol/install/share/outdoor_patrol_nav/bt/patrol_driveway.xml}"
+
+  # The mission layer. Sends the goals and enforces the GNSS-quality rule
+  # Nav2 has no way to know about.
+  #
+  # ⚠️  THIS ONE MOVES THE ROBOT. It starts driving as soon as bt_navigator
+  # is active. Bring it up last, with a hand on the kill switch.
+  mission:
+    <<: *common
+    container_name: outdoor-patrol-mission-nav2
+    profiles: ["nav2"]
+    depends_on:
+      - nav2
+    command:
+      - "bash"
+      - "-lc"
+      - >-
+        ros2 run outdoor_patrol_nav patrol_mission --ros-args
+        --params-file /opt/outdoor-patrol/install/share/outdoor_patrol_nav/config/patrol_mission_driveway.yaml
+        -p route_path:=/data/routes/${ROUTE_NAME:-driveway}.yaml
