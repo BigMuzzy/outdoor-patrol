@@ -77,6 +77,35 @@ The GNSS telemetry reads correctly on the real receiver:
 never given a goal, so it was not optimising; the idle figures say nothing
 about the Phase 3 question. Take that reading during the first followed lap.
 
+## Known state of the robot, 2026-09-06
+
+Read this before trusting the health screen.
+
+**The IMU is not responding.** `imu_driver` logs `No response to command 0x12`
+three times at start-up, then `Device identity/BIT query incomplete;
+continuing`, and `/imu/data` has **zero publishers**. The FTDI adapter
+enumerates (so the port opens) but the sensor never answers. The most likely
+cause is that the Inertial Labs KERNEL shares a power rail with the
+drivetrain, which was switched off — **check this first with the drivetrain
+powered on**, before assuming a driver or cable fault.
+
+This matters for the field test: the global EKF fuses IMU orientation, and
+`heading_to_imu` feeds GNSS heading in through the same path. Running without
+it is not a smaller version of the test, it is a different one.
+
+**robot_localization's frequency diagnostic is broken and is discarded.**
+Both EKFs publish `<node>: odometry/filtered topic status` reporting `Events
+since startup: 0` and `Actual frequency 0.000000` against a 25.2–35.2 Hz
+band, while `ros2 topic hz /odometry/filtered` measures a steady **30.0 Hz**.
+It has never ticked. It is filtered out by a `DiscardAnalyzer` in
+`config/diagnostics_analyzers.yaml` — a permanently-red screen teaches an
+operator to ignore red, which defeats the window. EKF health is read off
+`/odometry/global` in RViz instead. If `ros2 topic hz` and the diagnostic
+ever agree, delete the discard.
+
+With those two accounted for, the screen is honest: at the time of writing it
+shows exactly one error (the IMU) and one warning (`RTK Float`), both real.
+
 ## The four windows on the dev box
 
 ```bash
@@ -114,6 +143,12 @@ Under **um982_driver**:
 | `heading_deg` | last heading, whether or not it was published |
 | `heading_published` | false = the heading was DROPPED |
 | `hdop`, `correction_age_s` | geometry and RTCM freshness |
+
+`correction_age_s` is the one to watch for RTK: if it climbs past a few
+seconds the caster link is dead and `fix_quality` will fall from 4 to 5 to 1
+over the following minute. A missing `/data/ntrip.yaml` produces the same
+end state with no error anywhere — see the `DATA_DIR` note in
+`deploy/docker-compose.nav2.yaml`.
 
 `heading_quality: 0` with a healthy `fix_quality` is the ANT2 signature —
 see [heading-wrong-ant2-no-signal.md](../../wiki/gnss/heading-wrong-ant2-no-signal.md).

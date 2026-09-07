@@ -32,10 +32,38 @@ analyzers:
 
     # Everything an operator watches before pressing go. Grouped first
     # because it is the group that decides whether the run can happen at all.
+    #
+    # NOTE the discard below is FIRST on purpose: analyzers are offered each
+    # status in order, and the discard has to claim the broken one before the
+    # EKF analyzer does.
     localization:
       type: diagnostic_aggregator/AnalyzerGroup
       path: Localization
       analyzers:
+        # robot_localization's "<node>: odometry/filtered topic status" is
+        # broken upstream: it reports "Events since startup: 0" and "Actual
+        # frequency 0.000000" against a 25.2-35.2 Hz band while the topic is
+        # measurably publishing at 30.0 Hz. It has never once ticked, so it
+        # carries no information -- it is a permanent, unconditional ERROR.
+        #
+        # Discarded rather than displayed. A health screen that is always red
+        # is worse than no health screen: it trains the operator to ignore
+        # red, and the whole point of this window is that red means stop.
+        #
+        # There is deliberately NO EKF GenericAnalyzer beside this one. That
+        # broken status is the ONLY diagnostic either EKF publishes, so an
+        # EKF group would contain nothing else -- and AnalyzerGroup hands a
+        # status to EVERY analyzer that matches it, so a group that also
+        # matched would re-raise exactly what this discards. EKF health is
+        # instead read off /odometry/global, which RViz draws.
+        #
+        # Verify before removing this: `ros2 topic hz /odometry/filtered`
+        # against the "Actual frequency" the diagnostic claims. If they ever
+        # agree, the upstream bug is fixed and this block should go.
+        ekf_broken_freq:
+          type: diagnostic_aggregator/DiscardAnalyzer
+          path: DiscardedEkfFrequency
+          contains: [ 'odometry/filtered topic status' ]
         gnss:
           type: diagnostic_aggregator/GenericAnalyzer
           path: GNSS
@@ -44,10 +72,6 @@ analyzers:
           type: diagnostic_aggregator/GenericAnalyzer
           path: IMU
           startswith: [ 'imu_driver' ]
-        ekf:
-          type: diagnostic_aggregator/GenericAnalyzer
-          path: EKF
-          startswith: [ 'ekf_global', 'ekf_filter_node' ]
 
     # The mission layer. Absent until patrol_mission starts, which is correct:
     # there is no mission to report on before then.
