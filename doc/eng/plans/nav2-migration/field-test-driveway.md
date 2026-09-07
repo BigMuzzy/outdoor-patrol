@@ -4,7 +4,10 @@ First time the Nav2 stack drives a real robot. Everything you watch is a
 stock ROS tool: RViz with `rviz_default_plugins`, `rqt_robot_monitor`,
 `rqt_plot`, `rqt_service_caller`. There is no custom panel to build.
 
-**Status: not yet run.** This is the procedure, not a result.
+**Status: deployed and brought up on the robot 2026-09-06; not yet driven.**
+The stack is on the Pi and every Nav2 server activates — see
+[Deployment result](#deployment-result). What has *not* happened is a route
+being recorded or followed on real ground.
 
 ## Before you go outside
 
@@ -41,6 +44,38 @@ docker compose -f deploy/docker-compose.nav2.yaml up -d robot
 
 To go back afterwards: `docker compose -f deploy/docker-compose.nav2.yaml
 down` in `outdoor-patrol-nav2`, then `up -d` in `outdoor-patrol`.
+
+## Deployment result
+
+Done 2026-09-06. Image `outdoor-patrol:nav2` (4.1 GB) built on the Pi in
+~28 min — longer than the ~9 min the deploy skill quotes, because Nav2 and
+its dependencies were a cold layer. `outdoor-patrol:arm64` was left
+untouched, so the other branch's containers can be brought back by starting
+them.
+
+**Every Nav2 server configured and activated on the RK3588 first time:**
+`controller_server` (MPPI + `FollowPathRPP`), `planner_server`
+(`SmacPlannerHybrid`), `smoother_server`, `behavior_server`, `bt_navigator`,
+`velocity_smoother` — all bonded to the lifecycle manager, with
+`/navigate_through_poses` and both costmaps on the graph. That closes the
+top-ranked risk in [RESUME.md](./RESUME.md) ("`nav2_params.yaml` has never
+been through `configure()`") on hardware as well as in sim, and it is the
+first evidence that `nav2_params_driveway.yaml` is valid outside Gazebo.
+
+The GNSS telemetry reads correctly on the real receiver:
+
+| Field | Value |
+|---|---|
+| `fix_quality` | 4 (RTK fixed) |
+| `num_satellites_ant1_position` | 23 |
+| `num_satellites_ant2_heading` | 25 |
+| `heading_quality` | 2 (RTK float baseline) |
+| `heading_deg` | 166.17 |
+| `hdop` | 0.6 |
+
+**Not measured:** MPPI CPU under load. The controller was activated but
+never given a goal, so it was not optimising; the idle figures say nothing
+about the Phase 3 question. Take that reading during the first followed lap.
 
 ## The four windows on the dev box
 

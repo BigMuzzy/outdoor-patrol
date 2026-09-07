@@ -40,6 +40,15 @@
   <exec_depend>nav2_smac_planner</exec_depend>
   <exec_depend>nav2_smoother</exec_depend>
   <exec_depend>nav2_velocity_smoother</exec_depend>
+  <!-- Field readouts, all stock: rqt_robot_monitor renders the /diagnostics
+       patrol_mission and um982_driver publish, rqt_plot graphs the Float64
+       telemetry, rqt_service_caller presses the recorder Trigger services.
+       Declared so rosdep installs them rather than the field procedure
+       assuming a hand-installed dev box. -->
+  <exec_depend>rqt_robot_monitor</exec_depend>
+  <exec_depend>rqt_plot</exec_depend>
+  <exec_depend>rqt_service_caller</exec_depend>
+  <exec_depend>rviz2</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
