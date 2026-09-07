@@ -1,0 +1,25 @@
+{
+  "bag": "/tmp/val/bag_r3n",
+  "duration_s": 239.60917258262634,
+  "travelled_m": 98.79682975716426,
+  "laps": 0.9879682975716426,
+  "cross_track_rms_m": 0.0883388494679273,
+  "cross_track_max_m": 0.2191681209615235,
+  "settled_rms_m": 0.08948871127362719,
+  "settled_max_m": 0.2191681209615235,
+  "settled_fraction": 0.9742007851934941,
+  "lateral_min_m": -0.07485700245643331,
+  "lateral_max_m": 0.2191681209615235,
+  "d_min_m": 0.0,
+  "d_max_m": 0.0,
+  "longest_stop_s": 1.682074785232544,
+  "states": [
+    "driving",
+    "finished"
+  ],
+  "blocked_cycles": 0,
+  "degraded_cycles": 0,
+  "final_speed_ms": 0.0,
+  "clearances": [],
+  "resume": []
+}

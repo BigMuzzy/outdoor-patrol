@@ -37,10 +37,10 @@ COPY scripts/ ./scripts/
 RUN touch src/esp32-s3-uros-controller/firmware/COLCON_IGNORE || true
 
 # Resolve dependencies declared in package.xml files (covers both our
-# packages and the vendored src/micro_ros_setup submodule).
-RUN apt-get update \
-    && rosdep update --rosdistro=${ROS_DISTRO} \
-    && rosdep install --from-paths src --ignore-src -y --rosdistro=${ROS_DISTRO} \
+# packages and the vendored src/micro_ros_setup submodule). The wrapper
+# skips keys provided by src/ submodules so an incomplete checkout does not
+# abort the whole resolution.
+RUN ./scripts/rosdep-install.sh \
     && rm -rf /var/lib/apt/lists/*
 
 # Build the main workspace (includes micro_ros_setup meta-tooling).
@@ -81,11 +81,11 @@ WORKDIR /opt/outdoor-patrol
 COPY --from=builder /ws/install ./install
 COPY --from=builder /ws/uros_agent_ws/install ./uros_agent_ws/install
 COPY --from=builder /ws/src ./src
-RUN apt-get update \
-    && rosdep update --rosdistro=${ROS_DISTRO} \
-    && rosdep install --from-paths src --ignore-src -y --rosdistro=${ROS_DISTRO} \
-        --dependency-types=exec \
-    && rm -rf /var/lib/apt/lists/* /opt/outdoor-patrol/src
+COPY scripts/rosdep-install.sh ./scripts/rosdep-install.sh
+RUN ./scripts/rosdep-install.sh --dependency-types=exec \
+    && rm -rf /var/lib/apt/lists/* \
+              /opt/outdoor-patrol/src \
+              /opt/outdoor-patrol/scripts
 
 COPY deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

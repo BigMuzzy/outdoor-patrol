@@ -19,3 +19,6 @@ src/esp32-s3-uros-controller.worktrees
 runs/**/*.mcap
 runs/**/*.db3
 runs/**/metadata.yaml
+build/
+install/
+log/

@@ -1,0 +1,57 @@
+{
+  "bag": "/tmp/baseline/run1/bag_r4",
+  "duration_s": 171.64818215370178,
+  "travelled_m": 108.08193988644643,
+  "laps": 1.0808193988644643,
+  "cross_track_rms_m": 0.6991268137090116,
+  "cross_track_max_m": 1.8985037032442196,
+  "settled_rms_m": 0.11243057753672929,
+  "settled_max_m": 0.3892915128194638,
+  "settled_fraction": 0.5318016928657799,
+  "lateral_min_m": -2.6407338086970653,
+  "lateral_max_m": 0.23060387498679036,
+  "d_min_m": -2.4,
+  "d_max_m": 0.0,
+  "longest_stop_s": 0.818077802658081,
+  "states": [
+    "blocked",
+    "driving",
+    "resuming",
+    "retreating"
+  ],
+  "blocked_cycles": 180,
+  "degraded_cycles": 0,
+  "final_speed_ms": 0.44000000000000006,
+  "clearances": [
+    {
+      "name": "barrier_1",
+      "s_m": 8.0,
+      "clearance_m": 0.23987229599798088
+    },
+    {
+      "name": "barrier_2",
+      "s_m": 46.0,
+      "clearance_m": 0.4915968882050463
+    },
+    {
+      "name": "barrier_3",
+      "s_m": 77.0,
+      "clearance_m": 0.5039083826746937
+    }
+  ],
+  "resume": [
+    {
+      "name": "barrier_1",
+      "max_abs_d_after_m": 0.0
+    },
+    {
+      "name": "barrier_2",
+      "max_abs_d_after_m": 0.0
+    },
+    {
+      "name": "barrier_3",
+      "max_abs_d_after_m": 0.0
+    }
+  ],
+  "ideal_clearance_m": 0.2976
+}

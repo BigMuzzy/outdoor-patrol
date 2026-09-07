@@ -1,0 +1,25 @@
+{
+  "bag": "/tmp/baseline/run3/bag_r5",
+  "duration_s": 89.21399259567261,
+  "travelled_m": 29.730936952821512,
+  "laps": 0.29730936952821513,
+  "cross_track_rms_m": 0.05958042809044733,
+  "cross_track_max_m": 0.1465696173829865,
+  "settled_rms_m": 0.061694759561360404,
+  "settled_max_m": 0.1465696173829865,
+  "settled_fraction": 0.9325044404973357,
+  "lateral_min_m": -0.12538080974395435,
+  "lateral_max_m": 0.1465696173829865,
+  "d_min_m": 0.0,
+  "d_max_m": 0.0,
+  "longest_stop_s": 45.85500359535217,
+  "states": [
+    "degraded",
+    "driving"
+  ],
+  "blocked_cycles": 0,
+  "degraded_cycles": 787,
+  "final_speed_ms": 0.0,
+  "clearances": [],
+  "resume": []
+}

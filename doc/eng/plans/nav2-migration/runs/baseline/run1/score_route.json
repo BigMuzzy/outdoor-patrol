@@ -1,0 +1,61 @@
+[
+  {
+    "file": "route_odometry_global.yaml",
+    "source": "odometry_global",
+    "frame": "base_link",
+    "loop": true,
+    "samples": 131,
+    "span_m": 100.23785457231739,
+    "spacing_min_m": 0.1754447068577805,
+    "spacing_max_m": 1.061229548324604,
+    "closure_m": 0.2730937838415933,
+    "lateral_mean_m": 0.005034693423713012,
+    "lateral_rms_m": 0.028472756099472103,
+    "lateral_max_abs_m": 0.08505467911383861,
+    "fix_classes": {
+      "fixed": 131
+    },
+    "stations_covered_m": 99.5,
+    "is_control": false,
+    "pass": true
+  },
+  {
+    "file": "route_fix_lever_arm.yaml",
+    "source": "fix_lever_arm",
+    "frame": "base_link",
+    "loop": true,
+    "samples": 118,
+    "span_m": 100.36794761048692,
+    "spacing_min_m": 0.0537683079445232,
+    "spacing_max_m": 1.1902958495721585,
+    "closure_m": 0.3686567400205039,
+    "lateral_mean_m": 0.004209057849574414,
+    "lateral_rms_m": 0.02967892483865574,
+    "lateral_max_abs_m": 0.08950938392492774,
+    "fix_classes": {
+      "fixed": 118
+    },
+    "stations_covered_m": 99.75,
+    "is_control": false,
+    "pass": true
+  },
+  {
+    "file": "route_raw_antenna.yaml",
+    "source": "raw_antenna",
+    "frame": "gnss_link",
+    "loop": true,
+    "samples": 118,
+    "span_m": 103.04667411751474,
+    "spacing_min_m": 0.021145338308859677,
+    "spacing_max_m": 1.1783991220384606,
+    "closure_m": 0.3595692766496939,
+    "lateral_mean_m": -0.42132882687695455,
+    "lateral_rms_m": 0.42221552678161695,
+    "lateral_max_abs_m": 0.48412265412287453,
+    "fix_classes": {
+      "fixed": 118
+    },
+    "stations_covered_m": 99.25,
+    "is_control": true
+  }
+]

@@ -1,0 +1,346 @@
+# Nav2 overlay for the driveway world — an 18 ft (5.4864 m) square.
+#
+# NOT a validated configuration. The parity numbers in
+# doc/eng/plans/nav2-migration/ are all measured against the 100 m
+# patrol_road world with config/nav2_params.yaml; this file exists so that
+# driveway_road.sdf can be driven and watched without disturbing them.
+#
+# Everything here that differs from nav2_params.yaml differs because the loop
+# is 5.6x smaller, and each one is derived rather than guessed:
+#
+#   lap length        17.75 m   (100 m)
+#   corner radius      1.0 m    (5.0 m)
+#   corridor half     0.31 m    (3.0 m)  = exactly the robot's half width
+#
+# Load it with:
+#   ros2 launch outdoor_patrol_sim sim.launch.py nav:=true \
+#     world:=.../driveway.sdf nav_params_file:=.../nav2_params_driveway.yaml
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 20.0
+    costmap_update_timeout: 0.30
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    enable_stamped_cmd_vel: false
+    odom_topic: "/odometry/filtered"
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath", "FollowPathRPP"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      # 0.5 m in 10 s is most of a straight on this loop. 0.15 m is the same
+      # fraction of the lap that 0.5 m is of the 100 m road.
+      required_movement_radius: 0.15
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # 0.50 m on a 100 m lap is 0.5%. The equivalent here is 0.09 m, but that
+      # is below the EKF's own noise, so 0.15 m -- still under the 0.31 m
+      # corridor half-width, so "at the goal" cannot mean "off the pavement".
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.35
+
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 2000
+      # A 56 x 0.05 s horizon is 2.8 s. At 1.0 m/s that looks 2.8 m ahead --
+      # most of a straight plus both corners, so the optimiser is planning
+      # round the bend after next. Slowing to 0.4 m/s keeps the horizon at
+      # 1.1 m, comfortably inside one straight.
+      vx_max: 0.4
+      vx_min: -0.2
+      vy_max: 0.0
+      wz_max: 1.2
+      ax_max: 1.5
+      ax_min: -1.5
+      az_max: 2.5
+      # Was 1.7 m -- longer than a 2.87 m straight is wide, which prunes the
+      # path through the corner the robot is still in.
+      prune_distance: 0.8
+      transform_tolerance: 0.1
+      motion_model: "DiffDrive"
+      visualize: true
+
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+
+      AckermannConstraints:
+        min_turning_r: 0.0
+
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic",
+                "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
+                "PathAngleCritic", "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: true
+        collision_cost: 1000000.0
+        near_goal_distance: 0.5
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 0.5
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        mode: 0
+
+    FollowPathRPP:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.4
+      lookahead_dist: 0.5
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.8
+      lookahead_time: 1.2
+      transform_tolerance: 0.1
+      use_velocity_scaled_lookahead_dist: true
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.4
+      use_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.5
+      regulated_linear_scaling_min_speed: 0.15
+      max_robot_pose_search_dist: 3.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      # 6 x 6 m would hold the whole driveway plus 0.5 m of margin, which
+      # defeats the point of a rolling local window. 4 m still sees both
+      # corners of the straight the robot is on.
+      width: 4
+      height: 4
+      resolution: 0.025
+      footprint: "[[0.56, 0.31], [0.56, -0.31], [-0.12, -0.31], [-0.12, 0.31]]"
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 4.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        cost_scaling_factor: 6.0
+        # 0.85 m is more than the 0.62 m corridor is wide: every cell of the
+        # driveway would carry inflation cost and the robot would refuse to
+        # move. 0.25 m clears the footprint by 0.1 m from a wall.
+        inflation_radius: 0.25
+      always_send_full_costmap: true
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      rolling_window: true
+      # The whole driveway is 5.5 m; 12 m of rolling window holds it with
+      # room for the route to sit off-centre. 60 m was sized for a 100 m lap.
+      width: 12
+      height: 12
+      # 0.1 m cells would make the 1.0 m corner radius 10 cells and the
+      # 0.31 m corridor 3 -- too coarse for Smac to find a path round the
+      # bend. 0.05 doubles both.
+      resolution: 0.05
+      footprint: "[[0.56, 0.31], [0.56, -0.31], [-0.12, -0.31], [-0.12, 0.31]]"
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        cost_scaling_factor: 6.0
+        inflation_radius: 0.25
+      always_send_full_costmap: true
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 5.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner::SmacPlannerHybrid"
+      tolerance: 0.15
+      downsample_costmap: false
+      downsampling_factor: 1
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 3.0
+      motion_model_for_search: "REEDS_SHEPP"
+      angle_quantization_bins: 72
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 1.5
+      # THE important line. 1.5 m in nav2_params.yaml is larger than this
+      # entire loop's 1.0 m corner radius, so Smac could not follow the road
+      # even in principle. It is also not a chassis limit: chassis.yaml is a
+      # 0.545 m-track differential drive with a caster, which pivots in
+      # place, and issue-8 states no turning minimum at all. 0.4 m is 8 cells
+      # at the 0.05 m global resolution -- fine enough to corner, coarse
+      # enough that the search does not explode.
+      minimum_turning_radius: 0.4
+      reverse_penalty: 2.0
+      change_penalty: 0.0
+      non_straight_penalty: 1.2
+      cost_penalty: 2.0
+      retrospective_penalty: 0.015
+      lookup_table_size: 20.0
+      cache_obstacle_heuristic: false
+      smooth_path: true
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+        refinement_num: 2
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: true
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 3.2
+    enable_stamped_cmd_vel: false
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odometry/filtered
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    wait_for_service_timeout: 1000
+    navigators: ["navigate_to_pose", "navigate_through_poses"]
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+    navigate_through_poses:
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+    error_code_names:
+      - compute_path_error_code
+      - follow_path_error_code
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: true
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    # Mirrors the FollowPath limits above, not the chassis maximum: on a
+    # 17.75 m lap the firmware's 1.0 m/s clamp is never the binding limit.
+    max_velocity: [0.4, 0.0, 1.2]
+    min_velocity: [-0.2, 0.0, -1.2]
+    max_accel: [1.5, 0.0, 2.5]
+    max_decel: [-1.5, 0.0, -2.5]
+    odom_topic: "/odometry/filtered"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+    enable_stamped_cmd_vel: false

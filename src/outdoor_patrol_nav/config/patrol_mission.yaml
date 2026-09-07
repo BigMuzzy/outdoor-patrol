@@ -1,0 +1,72 @@
+# patrol_mission — the mission layer above Nav2.
+#
+# The GNSS thresholds are copied from outdoor_patrol_route/config/route.yaml
+# so R5 and R5-N test the same rule. If one file changes and the other does
+# not, the two runs stop being comparable and the parity claim is void.
+
+patrol_mission:
+  ros__parameters:
+    # Set on the command line by run_validation.sh, exactly as the follower's
+    # route_path is.
+    route_path: ""
+
+    # Status only. Nav2 gets its velocity feedback from /odometry/filtered
+    # (see nav2_params.yaml); this is the map-frame estimate, which is what a
+    # human watching the topic expects to see.
+    odom_topic: /odometry/global
+
+    # RAW driver fix, NOT /gnss/fix_gated. confidence_gate multiplies the
+    # covariance by 1000 on a degraded fix -- that number is an EKF weighting
+    # device, not a quality metric, and reading it here would turn the
+    # sigma_slow/sigma_stop pair below into an on/off cliff at 5 cm.
+    # route_follower.py:88 records the same decision.
+    fix_topic: /um982_driver/fix
+
+    fromll_service: /fromLL
+    fromll_timeout_s: 2.0
+    map_frame: map
+
+    # Station spacing along the projected route.
+    #
+    # 10.0 m was the plan document's guess, on the reasoning that it would be
+    # "dense enough that Hybrid-A* returns the centerline on a clear lane".
+    # R3-N measured that as false: the sim road is a rounded square with a
+    # 5.0 m corner radius, and a chord of spacing s across a corner of radius
+    # R departs the arc by R*(1 - cos(s/2R)) -- 2.30 m at s=10, which is what
+    # the first R3-N run scored (2.45 m peak, 0.61 m RMS). The via-poses do
+    # carry the recorded heading, but Reeds-Shepp corners at the planner's
+    # 1.5 m minimum turning radius, not the road's 5 m, so headings alone do
+    # not hold the path on the arc.
+    #
+    # 2.0 m puts that geometric term at 0.0995 m -- below the 0.129 m parity
+    # bar on its own -- while staying above the 1.5 m turning radius, so
+    # consecutive stations are still connectable without a Reeds-Shepp loop.
+    # This is a property of the corner radius, not a knob: re-derive it if
+    # corner_radius_m changes.
+    station_spacing_m: 2.0
+
+    # Longest single NavigateThroughPoses goal, in metres of route. A loop's
+    # last station is its first, so one goal per lap is "reached" before the
+    # robot moves; this splits the lap so no goal ends where the robot starts.
+    # Each boundary costs one brief stop, so keep it as large as possible --
+    # 50 m on a 100 m lap is a single boundary.
+    max_goal_span_m: 50.0
+
+    # Only meaningful on a loop route; an open route runs start to end once.
+    laps: 1.0
+
+    # -- GNSS quality, the one thing Nav2 cannot know -----------------------
+    # Above sigma_stop_m the goal is cancelled. Recovery needs the fix below
+    # sigma_slow_m for resume_clear_cycles consecutive ticks (20 ticks at
+    # 10 Hz = 2 s) before the goal is re-sent from where it stopped.
+    sigma_slow_m: 0.10
+    sigma_stop_m: 0.50
+    fix_timeout_s: 2.0
+    resume_clear_cycles: 20
+
+    # 10 Hz, matching the follower's status rate so score_run.py's degraded
+    # cycle count means the same thing in R5 and R5-N.
+    status_period_s: 0.1
+
+    # Empty = bt_navigator's default_nav_through_poses_bt_xml.
+    behavior_tree: ""

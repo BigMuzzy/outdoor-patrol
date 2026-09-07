@@ -1,0 +1,71 @@
+<!--
+  Patrol behaviour tree — Phase 1.
+
+  This is Nav2's stock navigate_through_poses_w_replanning_and_recovery,
+  copied in and pinned, with one addition: SmoothPath after the planner.
+
+  Pinned rather than referenced because Phase 4 replaces the recovery branch
+  with the safe-spot retreat (NearestSafeSpot -> NavigateToPose ->
+  WaitForCorridorClear). Owning the file makes that a reviewable diff instead
+  of a from-scratch tree, and it stops a Nav2 upgrade from silently changing
+  how the robot behaves when it cannot find a path.
+
+  SmoothPath runs Savitzky-Golay over the Hybrid-A* output (see
+  smoother_server in config/nav2_params.yaml). It is the replacement for the
+  custom smoothing in outdoor_patrol_route/path.py, and the reason none of
+  that module needed porting to C++.
+
+  Phase 3 fallback, if MPPI cannot hold 20 Hz on the RK3588: change
+  controller_id="FollowPath" to controller_id="FollowPathRPP" below. That
+  controller is already configured in nav2_params.yaml.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="0.333">
+          <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
+            <Sequence>
+              <!-- Reactive: RemovePassedGoals is re-evaluated while the
+                   planner action is still running, so stations the robot has
+                   already driven past drop out of the remaining goal list. -->
+              <ReactiveSequence>
+                <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.7"/>
+                <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
+              </ReactiveSequence>
+              <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}"
+                          smoother_id="simple_smoother" max_smoothing_duration="0.5"
+                          check_for_collisions="false"/>
+            </Sequence>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context"
+                              service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <!-- Phase 4 replaces this branch. Until then the recoveries are stock:
+           clear the costmaps, spin, wait, back up. Note that Spin and BackUp
+           publish velocity through the same velocity_smoother -> cmd_vel_raw
+           -> scan_safety path as the controller, so the forward brake still
+           applies during a recovery. -->
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
+                                service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5.0"/>
+          <BackUp backup_dist="0.30" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

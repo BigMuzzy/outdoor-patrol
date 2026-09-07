@@ -1,0 +1,25 @@
+{
+  "bag": "/tmp/driveway3/bag_r3n",
+  "duration_s": 186.45261216163635,
+  "travelled_m": 17.203863293334212,
+  "laps": 0.9692972647916599,
+  "cross_track_rms_m": 0.057400491500218705,
+  "cross_track_max_m": 0.1496380289146902,
+  "settled_rms_m": 0.05839868360352912,
+  "settled_max_m": 0.1496380289146902,
+  "settled_fraction": 0.9661016949152542,
+  "lateral_min_m": -0.05903827560745431,
+  "lateral_max_m": 0.1496380289146902,
+  "d_min_m": 0.0,
+  "d_max_m": 0.0,
+  "longest_stop_s": 3.9570398330688477,
+  "states": [
+    "driving",
+    "finished"
+  ],
+  "blocked_cycles": 0,
+  "degraded_cycles": 0,
+  "final_speed_ms": 0.0,
+  "clearances": [],
+  "resume": []
+}

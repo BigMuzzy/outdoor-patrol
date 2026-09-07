@@ -11,10 +11,19 @@
 #   R4  three barriers: goes around each on the RIGHT shoulder, then resumes
 #   R5  degraded GNSS: slows, then stops
 #
+# The Nav2 variants (doc/eng/plans/nav2-migration/, Phase 1) reuse the SAME
+# world, the SAME recorded route and the SAME scorer, and swap only the thing
+# under test -- route_follower for Nav2 + patrol_mission:
+#
+#   r3n  R3-N  clean loop under Nav2. Must stay within 2x the R3 baseline RMS.
+#   r5n  R5-N  degraded GNSS under Nav2: patrol_mission cancels the goal.
+#
 # Usage:
 #   ./run_validation.sh [outdir] [runs...]
 #   ./run_validation.sh /tmp/val            # everything
 #   ./run_validation.sh /tmp/val r4         # just R4, reusing an earlier route
+#
+#   ./run_validation.sh /tmp/val teach r3 r3n   # baseline and Nav2, same route
 #
 #   GUI=1 ./run_validation.sh /tmp/val r4   # + Gazebo GUI and RViz
 #
@@ -42,17 +51,63 @@ RUNS=("$@")
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SHARE="$WS/install/share/outdoor_patrol_sim"
 ROUTE_SHARE="$WS/install/share/outdoor_patrol_route"
-CENTERLINE="$SHARE/worlds/patrol_road_centerline.yaml"
+NAV_SHARE="$WS/install/share/outdoor_patrol_nav"
+# --- world selection -------------------------------------------------------
+#
+# Everything below defaults to the 100 m patrol_road the Phase 0 baseline and
+# the Phase 1 parity numbers were measured on. They are overridable by
+# environment variable so a differently-scaled world -- e.g. the 18 ft
+# driveway loop -- can be driven through the same harness without editing
+# this file or disturbing those numbers:
+#
+#   WORLD=driveway.sdf \
+#   CENTERLINE=$PWD/install/share/outdoor_patrol_sim/worlds/driveway_centerline.yaml \
+#   NAV_PARAMS=$PWD/install/share/outdoor_patrol_nav/config/nav2_params_driveway.yaml \
+#   MISSION_PARAMS=$PWD/install/share/outdoor_patrol_nav/config/patrol_mission_driveway.yaml \
+#   BT_XML=$PWD/install/share/outdoor_patrol_nav/bt/patrol_driveway.xml \
+#   START_X=-1.4332 START_Y=-2.4332 START_YAW=0.0 TEACH_SPEED=0.35 \
+#   GUI=1 ./run_validation.sh /tmp/driveway teach r3n
+#
+# A scaled world is NOT a validated configuration: the R3/R3-N pass criteria
+# are tuned to the 100 m road, so read the scores as observations rather than
+# as a gate.
+WORLD="${WORLD:-patrol_road.sdf}"
+OBSTACLE_WORLD="${OBSTACLE_WORLD:-patrol_road_obstacles.sdf}"
+CENTERLINE="${CENTERLINE:-$SHARE/worlds/patrol_road_centerline.yaml}"
+NAV_PARAMS="${NAV_PARAMS:-$NAV_SHARE/config/nav2_params.yaml}"
+MISSION_PARAMS="${MISSION_PARAMS:-$NAV_SHARE/config/patrol_mission.yaml}"
+BT_XML="${BT_XML:-$NAV_SHARE/bt/patrol.xml}"
+TEACH_SPEED="${TEACH_SPEED:-0.8}"
+# Pure-pursuit lookahead for the teach-pass driver. A lookahead of L on a
+# corner of radius R cuts the corner by roughly L^2/(8R), so the 1.5 m default
+# costs 0.056 m on the 100 m road's 5 m corners and 0.281 m on a driveway's
+# 1 m corners -- the recorded route, not the follower, is then the error.
+# Scale it with the corner radius, not with the speed: this is geometry and
+# slowing down does not help.
+TEACH_LOOKAHEAD="${TEACH_LOOKAHEAD:-1.5}"
 SCORE_ROUTE="$WS/src/outdoor_patrol_route/scripts/score_route.py"
 SCORE_RUN="$WS/src/outdoor_patrol_route/scripts/score_run.py"
 
-# s = 0 of the generated road, heading east along the south straight.
-START_X=-8.573
-START_Y=-13.573
-START_YAW=0.0
+# Parity bar for R3-N: 2x the mean R3 RMS from the Phase 0 baseline runs.
+# 0.129 is MEASURED: three runs of `teach r3 r4 r5` on 2026-09-06 gave R3
+# RMS 0.0612 / 0.0642 / 0.0681 m, mean 0.0645 m. See
+# doc/eng/plans/nav2-migration/runs/baseline/baseline.md for the machine and
+# the full table. Re-measure if the world, the chassis params or the
+# follower's gains change.
+NAV_MAX_RMS="${NAV_MAX_RMS:-0.129}"
 
-# Node names that mean "a stack is already running".
-STACK_NODES='^/(gz_bridge|gnss_sim|odom_sim|ekf_global|ekf_filter_node|navsat_transform|confidence_gate|heading_to_imu|scan_safety)$'
+# s = 0 of the generated road, heading east along the south straight.
+START_X="${START_X:--8.573}"
+START_Y="${START_Y:--13.573}"
+START_YAW="${START_YAW:-0.0}"
+
+# Node names that mean "a stack is already running". The nav2 servers are in
+# here for the same reason as the EKFs: a leftover controller_server still
+# publishes /cmd_vel_nav, and the next run would drive on it.
+STACK_NODES='^/(gz_bridge|gnss_sim|odom_sim|ekf_global|ekf_filter_node|navsat_transform|confidence_gate|heading_to_imu|scan_safety'
+STACK_NODES="$STACK_NODES"'|controller_server|planner_server|smoother_server'
+STACK_NODES="$STACK_NODES"'|behavior_server|bt_navigator|velocity_smoother'
+STACK_NODES="$STACK_NODES"'|lifecycle_manager_navigation|patrol_mission)$'
 
 mkdir -p "$OUTDIR"
 # colcon's setup.bash reads unset variables; -u must be off while sourcing.
@@ -162,6 +217,13 @@ reap_stragglers() {
   local pattern pids pid
   pattern='gz sim|parameter_bridge|ekf_node|navsat_transform_node'
   pattern="$pattern"'|install/lib/outdoor_patrol|robot_state_publisher'
+  # The nav2 servers come from /opt/ros, not from install/lib/outdoor_patrol,
+  # so the line above does not reach them. Matched by executable path to avoid
+  # matching this script's own arguments.
+  pattern="$pattern"'|lib/nav2_[a-z_]*/(controller_server|planner_server)'
+  pattern="$pattern"'|lib/nav2_[a-z_]*/(smoother_server|behavior_server)'
+  pattern="$pattern"'|lib/nav2_[a-z_]*/(bt_navigator|velocity_smoother)'
+  pattern="$pattern"'|lib/nav2_[a-z_]*/lifecycle_manager'
   pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
   [ -z "$pids" ] && return 0
   note "reaping stragglers: $(echo "$pids" | tr '\n' ' ')"
@@ -199,7 +261,7 @@ stop_sim() {
 trap 'stop_group "$SIM_PGID"; reap_stragglers' EXIT
 
 start_sim() {
-  local world="$1" log_file="$2"
+  local world="$1" log_file="$2" nav="${3:-false}"
   local stale
   stale="$(stack_nodes)"
   if [ -n "$stale" ]; then
@@ -219,12 +281,15 @@ start_sim() {
     return 1
   fi
 
-  log "starting sim: $(basename "$world")"
+  log "starting sim: $(basename "$world")$([ "$nav" = true ] && echo ' + nav2')"
   SIM_PGID="$(spawn_group sim "$log_file" \
       ros2 launch outdoor_patrol_sim sim.launch.py \
       world:="$SHARE/worlds/$world" \
       x:="$START_X" y:="$START_Y" yaw:="$START_YAW" \
       gui:="$GZ_GUI" use_rviz:="$RVIZ_GUI" \
+      nav:="$nav" \
+      nav_params_file:="$NAV_PARAMS" \
+      bt_xml:="$BT_XML" \
       rviz_config:="$ROUTE_SHARE/config/route.rviz")"
   if [ -z "$SIM_PGID" ]; then
     echo "    ERROR: the sim never reported its process group" >&2
@@ -263,7 +328,7 @@ wait_for_flag() {   # topic, timeout seconds
 # --- runs ------------------------------------------------------------------
 
 run_teach() {
-  start_sim patrol_road.sdf "$OUTDIR/sim_teach.log" || { FAILED=1; return 1; }
+  start_sim "$WORLD" "$OUTDIR/sim_teach.log" || { FAILED=1; return 1; }
 
   local groups=()
   for source in odometry_global fix_lever_arm raw_antenna; do
@@ -282,7 +347,8 @@ run_teach() {
       ros2 run outdoor_patrol_sim sim_route_driver --ros-args \
       -p use_sim_time:=true \
       -p centerline_path:="$CENTERLINE" \
-      -p speed_ms:=0.8 -p laps:=1.0)"
+      -p speed_ms:="$TEACH_SPEED" -p laps:=1.0 \
+      -p lookahead_m:="$TEACH_LOOKAHEAD")"
 
   wait_for_flag /sim_route_driver/finished "$FLAG_TIMEOUT" || FAILED=1
   stop_group "$driver"
@@ -306,13 +372,28 @@ follow_run() {      # label, world, bag name, extra scorer args...
   local label="$1" world="$2" bag="$3"; shift 3
   local route="$OUTDIR/route_odometry_global.yaml"
 
+  # A "-N" label runs the same scenario against Nav2 + patrol_mission instead
+  # of route_follower. World, route, scorer and thresholds are deliberately
+  # identical, so a difference in the score is a difference in the controller
+  # and nothing else.
+  local nav=false
+  local status_topic=/route_follower/status
+  local finished_topic=/route_follower/finished
+  case "$label" in
+    *-N)
+      nav=true
+      status_topic=/patrol_mission/status
+      finished_topic=/patrol_mission/finished
+      ;;
+  esac
+
   if [ ! -f "$route" ]; then
     echo "    ERROR: $route missing -- run the teach pass first" >&2
     FAILED=1
     return 1
   fi
 
-  start_sim "$world" "$OUTDIR/sim_$label.log" || { FAILED=1; return 1; }
+  start_sim "$world" "$OUTDIR/sim_$label.log" "$nav" || { FAILED=1; return 1; }
 
   # GNSS_SIGMA lets a run be repeated at the accuracy a real correction
   # service actually delivers, rather than the 2 cm the sim defaults to.
@@ -324,34 +405,55 @@ follow_run() {      # label, world, bag name, extra scorer args...
       || note "WARNING: could not set gnss_sim sigma"
   fi
 
+  # The scorer reads /odom_truth, the status topic and /cmd_vel. The rest is
+  # for the human reading the bag afterwards: /cmd_vel_nav shows what the
+  # controller asked for before the smoother and the brake got to it, and
+  # /plan shows what Hybrid-A* actually handed to MPPI.
+  local topics=(/odom_truth "$status_topic" /cmd_vel /cmd_vel_raw
+                /gnss/fix_gated)
+  if [ "$nav" = true ]; then
+    topics+=(/cmd_vel_nav /plan)
+  fi
+
   rm -rf "${OUTDIR:?}/$bag"
   local recorder
   recorder="$(spawn_group "bag_$label" "$OUTDIR/$bag.log" \
-      ros2 bag record -o "$OUTDIR/$bag" \
-      /odom_truth /route_follower/status /cmd_vel /cmd_vel_raw \
-      /gnss/fix_gated)"
+      ros2 bag record -o "$OUTDIR/$bag" "${topics[@]}")"
   sleep 3
 
   log "$label -- following the route"
-  # --params-file first: ROS 2 applies overrides in order, and route.yaml
-  # carries an empty route_path that would otherwise win.
+  # --params-file first: ROS 2 applies overrides in order, and both parameter
+  # files carry an empty route_path that would otherwise win.
   local follower
-  follower="$(spawn_group "follow_$label" "$OUTDIR/follower_$label.log" \
-      ros2 run outdoor_patrol_route route_follower --ros-args \
-      --params-file "$ROUTE_SHARE/config/route.yaml" \
-      -p use_sim_time:=true \
-      -p route_path:="$route")"
-
-  if [ "$label" = "R5" ]; then
-    # Let it settle into the lane, then degrade the fix past sigma_stop.
-    sleep 45
-    log "R5 -- degrading the simulated fix to sigma 0.8 m"
-    ros2 param set /gnss_sim horizontal_stddev_m 0.8 \
-        >> "$OUTDIR/follower_$label.log" 2>&1
-    sleep 45
+  if [ "$nav" = true ]; then
+    # patrol_mission retries until bt_navigator is active, so it is safe to
+    # start it before the lifecycle manager has finished bringing Nav2 up.
+    follower="$(spawn_group "follow_$label" "$OUTDIR/follower_$label.log" \
+        ros2 run outdoor_patrol_nav patrol_mission --ros-args \
+        --params-file "$MISSION_PARAMS" \
+        -p use_sim_time:=true \
+        -p route_path:="$route")"
   else
-    wait_for_flag /route_follower/finished "$FLAG_TIMEOUT" || FAILED=1
+    follower="$(spawn_group "follow_$label" "$OUTDIR/follower_$label.log" \
+        ros2 run outdoor_patrol_route route_follower --ros-args \
+        --params-file "$ROUTE_SHARE/config/route.yaml" \
+        -p use_sim_time:=true \
+        -p route_path:="$route")"
   fi
+
+  case "$label" in
+    R5|R5-N)
+      # Let it settle into the lane, then degrade the fix past sigma_stop.
+      sleep 45
+      log "$label -- degrading the simulated fix to sigma 0.8 m"
+      ros2 param set /gnss_sim horizontal_stddev_m 0.8 \
+          >> "$OUTDIR/follower_$label.log" 2>&1
+      sleep 45
+      ;;
+    *)
+      wait_for_flag "$finished_topic" "$FLAG_TIMEOUT" || FAILED=1
+      ;;
+  esac
 
   stop_group "$follower"
   sleep 2
@@ -379,15 +481,22 @@ follow_run() {      # label, world, bag name, extra scorer args...
 
   log "$label -- scoring"
   python3 "$SCORE_RUN" --bag "$OUTDIR/$bag" --centerline "$CENTERLINE" \
+      --status-topic "$status_topic" \
       --label "$label" --json "$OUTDIR/score_$label.json" "$@" || FAILED=1
 }
 
 for run in "${RUNS[@]}"; do
   case "$run" in
     teach) run_teach ;;
-    r3) follow_run R3 patrol_road.sdf bag_r3 ;;
-    r4) follow_run R4 patrol_road_obstacles.sdf bag_r4 --expect-obstacles ;;
-    r5) follow_run R5 patrol_road.sdf bag_r5 --expect-degraded \
+    r3) follow_run R3 "$WORLD" bag_r3 ;;
+    r4) follow_run R4 "$OBSTACLE_WORLD" bag_r4 --expect-obstacles ;;
+    r5) follow_run R5 "$WORLD" bag_r5 --expect-degraded \
+            --min-laps 0.0 --max-stop-s 1e9 ;;
+    # Nav2 (doc/eng/plans/nav2-migration/phase-1.md). No r4n: R4 scores the
+    # retreat from the COMMANDED lateral offset, which is identically zero
+    # under Nav2. Phase 2 replaces that check before there is an R4-N.
+    r3n) follow_run R3-N "$WORLD" bag_r3n --max-rms "$NAV_MAX_RMS" ;;
+    r5n) follow_run R5-N "$WORLD" bag_r5n --expect-degraded \
             --min-laps 0.0 --max-stop-s 1e9 ;;
     *) echo "unknown run: $run" >&2; FAILED=1 ;;
   esac

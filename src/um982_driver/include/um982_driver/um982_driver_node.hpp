@@ -115,6 +115,17 @@ private:
   NmeaFixQuality last_quality_{NmeaFixQuality::kInvalid};
   uint16_t last_num_sats_{0};
   double last_hdop_{0.0};
+  // Dual-antenna (KSXT) state, recorded even when the heading is DROPPED.
+  // A dropped heading is the interesting case -- quality 0 means the
+  // ANT1->ANT2 baseline is unsolved, usually because ANT2 has no signal
+  // (doc/eng/wiki/gnss/heading-wrong-ant2-no-signal.md) -- and a field
+  // operator needs to see that in /diagnostics rather than infer it from a
+  // throttled warning in the container log.
+  std::optional<double> last_heading_deg_;
+  uint8_t last_heading_quality_{0};
+  std::optional<uint16_t> last_sats_position_;
+  std::optional<uint16_t> last_sats_heading_;
+  bool last_heading_published_{false};
   std::optional<double> last_correction_age_s_;
   rclcpp::Time last_fix_time_;
   rclcpp::Time last_rtcm_in_time_;

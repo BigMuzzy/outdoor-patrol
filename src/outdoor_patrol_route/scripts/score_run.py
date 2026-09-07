@@ -10,7 +10,9 @@ Reads a rosbag containing:
 
 ===========================  =========================================
 ``/odom_truth``              Gazebo ground truth. Never fused; the ruler.
-``/route_follower/status``   JSON: state, station, cross-track, offset.
+``--status-topic``           JSON: state, station, cross-track, offset.
+                             ``/route_follower/status`` by default;
+                             ``/patrol_mission/status`` for a Nav2 run.
 ``/cmd_vel``                 What actually reached the chassis, i.e.
                              after the M3 forward brake.
 ===========================  =========================================
@@ -156,17 +158,17 @@ def load_status(entries):
 
 
 def analyse(bag, road: Road, args):
-    topics = read_bag(bag, ['/odom_truth', '/route_follower/status',
-                            '/cmd_vel'])
+    status_topic = args.status_topic
+    topics = read_bag(bag, ['/odom_truth', status_topic, '/cmd_vel'])
     truth = topics['/odom_truth']
-    status = load_status(topics['/route_follower/status'])
+    status = load_status(topics[status_topic])
     cmds = topics['/cmd_vel']
 
     if not truth:
         raise SystemExit('%s: no /odom_truth -- was the bag recorded?' % bag)
     if not status:
-        raise SystemExit('%s: no /route_follower/status -- did the follower '
-                         'ever start?' % bag)
+        raise SystemExit('%s: no %s -- did the follower ever start?'
+                         % (bag, status_topic))
 
     times = np.array([t for t, _ in truth])
     points = np.array([[m.pose.pose.position.x, m.pose.pose.position.y]
@@ -399,6 +401,14 @@ def main(argv=None) -> int:
     parser.add_argument('--bag', required=True)
     parser.add_argument('--centerline', required=True)
     parser.add_argument('--label', default='run')
+    parser.add_argument('--status-topic', default='/route_follower/status',
+                        help='Topic carrying the JSON status. Set to '
+                             '/patrol_mission/status to score a Nav2 run '
+                             '(R3-N, R5-N). Whatever publishes it must supply '
+                             "`state` and `d_cmd`; under Nav2 there is no "
+                             'commanded lateral offset, so d_cmd is 0.0 and '
+                             'cross-track falls back to the true lateral '
+                             'position against this centerline.')
     parser.add_argument('--max-rms', type=float, default=0.25)
     parser.add_argument('--max-peak', type=float, default=0.50)
     parser.add_argument('--min-laps', type=float, default=0.98)

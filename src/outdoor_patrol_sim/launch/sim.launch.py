@@ -41,6 +41,12 @@ stop-on-signal-loss path -- only the brake's stand-in for it.
 Only run ONE instance at a time. Two `gz sim` servers share the same
 gz-transport topic names, so a second sim silently steals `/cmd_vel` and
 `/scan` from the first and nothing behaves as expected.
+
+`nav:=true` additionally brings up the Nav2 stack from `outdoor_patrol_nav`
+(Phase 1 of doc/eng/plans/nav2-migration/). It starts the servers only; the
+mission node that feeds them goals is started by `run_validation.sh`, the same
+way `route_follower` is. Nav2 writes to `/cmd_vel_raw`, so the brake stays in
+the path unchanged.
 """
 
 import os
@@ -92,6 +98,7 @@ def _spawn_height() -> str:
 def generate_launch_description() -> LaunchDescription:
     sim_pkg = FindPackageShare('outdoor_patrol_sim')
     loc_pkg = FindPackageShare('outdoor_patrol_loc')
+    nav_pkg = FindPackageShare('outdoor_patrol_nav')
     safety_pkg = FindPackageShare('outdoor_patrol_safety')
     sim_share = get_package_share_directory('outdoor_patrol_sim')
 
@@ -101,6 +108,7 @@ def generate_launch_description() -> LaunchDescription:
     use_localization = LaunchConfiguration('localization')
     use_gnss = LaunchConfiguration('gnss')
     use_safety = LaunchConfiguration('safety')
+    use_nav = LaunchConfiguration('nav')
 
     args = [
         DeclareLaunchArgument(
@@ -144,6 +152,41 @@ def generate_launch_description() -> LaunchDescription:
                         'starting the EKF stack. The launch already GATES on '
                         'the first /clock message (see clock_gate below); '
                         'this is only margin on top of that.'),
+        DeclareLaunchArgument(
+            'nav', default_value='false',
+            description='Run the Nav2 stack from outdoor_patrol_nav: '
+                        'planner, controller, smoother, behaviours, '
+                        'bt_navigator and the lifecycle manager. Requires '
+                        'localization:=true -- Nav2 starts off the same '
+                        '/clock gate as the EKFs and is useless without '
+                        'map -> odom. This launch does NOT start '
+                        'patrol_mission; run_validation.sh does, because the '
+                        'route path is the caller\'s to choose, exactly as '
+                        'with route_follower.'),
+        DeclareLaunchArgument(
+            'nav_start_delay', default_value='8.0',
+            description='Seconds after /clock goes live before the Nav2 '
+                        'servers start, when nav:=true. Longer than '
+                        'localization_start_delay on purpose: the costmaps '
+                        'want map -> odom -> base_link to already exist, and '
+                        'a Nav2 stack that activates into a TF gap spends its '
+                        'first seconds logging lookup failures.'),
+        DeclareLaunchArgument(
+            'nav_params_file',
+            default_value=PathJoinSubstitution(
+                [nav_pkg, 'config', 'nav2_params.yaml']),
+            description='Nav2 parameter file, when nav:=true. Defaults to the '
+                        'set the Phase 1 parity numbers were measured with; '
+                        'override it only for a world of a different scale, '
+                        'e.g. config/nav2_params_driveway.yaml.'),
+        DeclareLaunchArgument(
+            'bt_xml',
+            default_value=PathJoinSubstitution(
+                [nav_pkg, 'bt', 'patrol.xml']),
+            description='Behaviour tree XML, when nav:=true. Pairs with '
+                        'nav_params_file: RemovePassedGoals\' radius lives '
+                        'in the tree but is only meaningful against the '
+                        'station spacing in the mission config.'),
         DeclareLaunchArgument(
             'x', default_value='0.0', description='Spawn X in the world.'),
         DeclareLaunchArgument(
@@ -316,6 +359,34 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(use_localization),
     )
 
+    # Nav2, off the same /clock gate as the EKFs and behind the same scoping
+    # rule: nav2.launch.py declares `params_file`, and so does
+    # scan_safety.launch.py. Unscoped, whichever include runs first wins and
+    # the other silently loads the wrong YAML. See the note above `safety`.
+    nav = RegisterEventHandler(
+        OnProcessExit(
+            target_action=clock_gate,
+            on_exit=[TimerAction(
+                period=LaunchConfiguration('nav_start_delay'),
+                actions=[GroupAction(
+                    scoped=True,
+                    actions=[IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource(
+                            PathJoinSubstitution(
+                                [nav_pkg, 'launch', 'nav2.launch.py'])),
+                        launch_arguments={
+                            'use_sim_time': 'true',
+                            'params_file': LaunchConfiguration(
+                                'nav_params_file'),
+                            'bt_xml': LaunchConfiguration('bt_xml'),
+                        }.items(),
+                    )],
+                )],
+            )],
+        ),
+        condition=IfCondition(use_nav),
+    )
+
     # M3 forward brake. Runs against the SAME raw-scan convention as the
     # robot: scan_safety reads raw angles (no TF), and the sim's gpu_lidar
     # hangs off the yaw-pi lidar_link, so forward_offset_deg=180 is correct
@@ -362,5 +433,6 @@ def generate_launch_description() -> LaunchDescription:
         safety,
         clock_gate,
         localization,
+        nav,
         rviz,
     ])

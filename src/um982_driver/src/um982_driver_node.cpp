@@ -495,6 +495,19 @@ void Um982DriverNode::publish_vtg(const NmeaVtg & vtg)
 
 void Um982DriverNode::publish_ksxt(const KsxtSentence & k)
 {
+  // Record the dual-antenna state FIRST, before any early return, so
+  // /diagnostics reports the unsolved-baseline case rather than going quiet
+  // exactly when the operator most needs to know.
+  {
+    std::lock_guard<std::mutex> lk(state_mutex_);
+    last_heading_deg_ = k.heading_deg;
+    last_heading_quality_ = k.heading_quality;
+    last_sats_position_ = k.num_satellites_position;
+    last_sats_heading_ = k.num_satellites_heading;
+    last_heading_published_ =
+      k.heading_deg.has_value() &&
+      static_cast<int>(k.heading_quality) >= min_heading_quality_;
+  }
   if (!k.heading_deg.has_value()) {return;}
   // Gate on the receiver's dual-antenna heading-solution quality (KSXT:
   // 0=invalid, 1=single, 2=RTK float, 3=RTK fixed). Quality 0 means the
@@ -559,6 +572,21 @@ void Um982DriverNode::produce_diagnostics(diagnostic_updater::DiagnosticStatusWr
   stat.add("fix_quality", static_cast<int>(last_quality_));
   stat.add("num_satellites", static_cast<int>(last_num_sats_));
   stat.add("hdop", last_hdop_);
+  // -- dual antenna -------------------------------------------------------
+  // ANT1 is the position antenna, ANT2 the heading (baseline) antenna. KSXT
+  // heading quality: 0=unsolved, 1=single, 2=RTK float, 3=RTK fixed. A
+  // heading_quality of 0 with a healthy fix_quality is the ANT2 signature.
+  stat.add("heading_quality", static_cast<int>(last_heading_quality_));
+  stat.add("heading_published", last_heading_published_);
+  if (last_heading_deg_.has_value()) {
+    stat.add("heading_deg", *last_heading_deg_);
+  }
+  if (last_sats_position_.has_value()) {
+    stat.add("num_satellites_ant1_position", static_cast<int>(*last_sats_position_));
+  }
+  if (last_sats_heading_.has_value()) {
+    stat.add("num_satellites_ant2_heading", static_cast<int>(*last_sats_heading_));
+  }
   if (last_correction_age_s_.has_value()) {
     stat.add("correction_age_s", *last_correction_age_s_);
   }

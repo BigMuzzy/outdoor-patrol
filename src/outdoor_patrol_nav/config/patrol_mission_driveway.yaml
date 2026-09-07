@@ -1,0 +1,43 @@
+# patrol_mission overlay for the driveway world — an 18 ft square.
+#
+# NOT a validated configuration; see nav2_params_driveway.yaml for why.
+# Only the values that are a function of the road's scale differ from
+# config/patrol_mission.yaml. The GNSS thresholds deliberately do not.
+
+patrol_mission:
+  ros__parameters:
+    route_path: ""
+    odom_topic: /odometry/global
+    fix_topic: /um982_driver/fix
+    fromll_service: /fromLL
+    fromll_timeout_s: 2.0
+    map_frame: map
+
+    # Re-derived for this road exactly as finding 7 in
+    # doc/eng/plans/nav2-migration/progress.md says it must be. The driveway
+    # loop's corners are 1.0 m, not 5.0 m, and a chord of spacing s across an
+    # arc of radius R departs it by R*(1 - cos(s/2R)):
+    #
+    #     s = 2.0 m (the 100 m road's value) -> 0.46 m   -- 1.5x the corridor
+    #     s = 0.6 m                          -> 0.045 m
+    #
+    # 0.6 m keeps the geometric term at 0.045 m, well inside the 0.31 m
+    # corridor half-width. Going below ~0.5 m would collide with
+    # RemovePassedGoals' radius (see bt/patrol_driveway.xml), which must stay
+    # smaller than the spacing or several stations are dropped at once.
+    station_spacing_m: 0.6
+
+    laps: 1.0
+
+    # Half of the 17.75 m lap, so there is exactly one chunk boundary. The
+    # 50 m default would be the entire lap in one goal, which is finding 6:
+    # a closed loop's final pose is its first, so the goal is satisfied
+    # before the robot moves and the run "succeeds" having travelled 0 m.
+    max_goal_span_m: 8.9
+
+    sigma_slow_m: 0.10
+    sigma_stop_m: 0.50
+    fix_timeout_s: 2.0
+    resume_clear_cycles: 20
+    status_period_s: 0.1
+    behavior_tree: ""

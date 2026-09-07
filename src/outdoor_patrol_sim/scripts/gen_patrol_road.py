@@ -543,11 +543,11 @@ def world_sdf(road: Road, with_obstacles: bool) -> str:
 
 # --------------------------------------------------------------------------
 
-def artefacts(road: Road) -> dict:
+def artefacts(road: Road, prefix: str = 'patrol_road') -> dict:
     return {
-        'patrol_road.sdf': world_sdf(road, with_obstacles=False),
-        'patrol_road_obstacles.sdf': world_sdf(road, with_obstacles=True),
-        'patrol_road_centerline.yaml': centerline_yaml(road),
+        '%s.sdf' % prefix: world_sdf(road, with_obstacles=False),
+        '%s_obstacles.sdf' % prefix: world_sdf(road, with_obstacles=True),
+        '%s_centerline.yaml' % prefix: centerline_yaml(road),
     }
 
 
@@ -563,6 +563,10 @@ def main(argv=None) -> int:
     parser.add_argument('--lane-half-width', type=float, default=2.0)
     parser.add_argument('--shoulder-width', type=float, default=1.0)
     parser.add_argument('--sample-spacing', type=float, default=0.25)
+    parser.add_argument('--name-prefix', default='patrol_road',
+                        help='basename of the generated artefacts, so a '
+                             'second road (e.g. a driveway-sized loop) can '
+                             'live beside the default one')
     parser.add_argument('--check', action='store_true',
                         help='exit non-zero if the files on disk differ from '
                              'what would be generated')
@@ -574,7 +578,7 @@ def main(argv=None) -> int:
                     shoulder_width_m=args.shoulder_width,
                     sample_spacing_m=args.sample_spacing)
     road = build_road(spec)
-    files = artefacts(road)
+    files = artefacts(road, args.name_prefix)
 
     if args.check:
         stale = []

@@ -1,0 +1,198 @@
+# RViz preset for a Nav2 FIELD run (outdoor_patrol_nav).
+#
+# Stock displays only -- no custom RViz plugin, nothing to build on the dev
+# box beyond rviz2 itself. Everything here ships with rviz_default_plugins.
+#
+# Run it on the DEV BOX, not the robot:
+#
+#   ros2 launch outdoor_patrol_bringup rviz.launch.py \
+#     rviz_config:=$(ros2 pkg prefix outdoor_patrol_nav)/share/outdoor_patrol_nav/config/field.rviz
+#
+# The numbers live in rqt, not here (see the package README):
+#   rqt_robot_monitor  GNSS sat count / fix quality / ANT2 heading, mission state
+#   rqt_plot           cross-track, speed, sigma over time
+#   rqt_service_caller Start/stop route recording (/route_recorder/save)
+#
+# What to look for:
+#
+#   orange arrows   /odometry/global -- the fused estimate. This is where the
+#                   robot thinks it is; there is no ground truth outdoors.
+#   green line      /plan -- what Smac Hybrid-A* handed to the controller.
+#   cyan line       /local_plan -- what MPPI is actually executing.
+#   yellow points   /scan. Anything solid here should push the local plan.
+#   costmaps        local (6 m window) and global. If the robot refuses to
+#                   move, look for inflation covering the whole corridor.
+#
+# NOTE ON FRAMES: fixed frame is `map`. Outdoors that frame is defined by the
+# navsat datum, so if `wait_for_datum` has not been satisfied the whole scene
+# will sit at the origin and nothing will line up. That is a localization
+# fault, not an RViz one -- check /diagnostics first.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      # 1 m cells over 40 m: sized for a driveway, not the 100 m sim loop.
+      Cell Size: 1
+      Plane Cell Count: 40
+      Color: 90; 90; 90
+    - Class: rviz_default_plugins/TF
+      Enabled: false
+      Name: TF
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: Scan
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 4
+      Color: 255; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+    # The fused estimate. Outdoors this is the only position there is --
+    # /odom_truth does not exist off the sim.
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: GlobalEKF
+      Topic:
+        Value: /odometry/global
+        Depth: 100
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Covariance:
+        Value: false
+      Keep: 4000
+      Position Tolerance: 0.1
+      Angle Tolerance: 0.2
+      Shape:
+        Value: Arrow
+        Color: 255; 85; 0
+        Alpha: 1.0
+        Shaft Length: 0.25
+        Shaft Radius: 0.03
+        Head Length: 0.1
+        Head Radius: 0.06
+    # Global plan from Smac Hybrid-A*.
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: GlobalPlan
+      Topic:
+        Value: /plan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Color: 0; 255; 0
+      Line Style: Lines
+      Alpha: 1.0
+    # What MPPI is executing right now. Divergence between this and the
+    # global plan is the controller deviating -- which is the whole point of
+    # MPPI, so it is expected near an obstacle and suspicious on clear road.
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: LocalPlan
+      Topic:
+        Value: /local_plan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Color: 0; 255; 255
+      Line Style: Lines
+      Alpha: 1.0
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: LocalCostmap
+      Topic:
+        Value: /local_costmap/costmap
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: costmap
+      Alpha: 0.4
+    - Class: rviz_default_plugins/Map
+      Enabled: false
+      Name: GlobalCostmap
+      Topic:
+        Value: /global_costmap/costmap
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: costmap
+      Alpha: 0.3
+    # The taught route, latched, so RViz shows it the moment it connects.
+    # A nav_msgs/Path rather than markers: stock display, no custom message.
+    # This is what the robot was TOLD to drive; GlobalPlan is what the planner
+    # made of it, and the gap between the two is worth watching.
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: TaughtRoute
+      Topic:
+        Value: /patrol_mission/route
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color: 255; 0; 255
+      Line Style: Lines
+      Alpha: 0.9
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/FocusCamera
+    # Stock goal tool. Useful for a manual NavigateToPose sanity check before
+    # handing control to patrol_mission -- it proves the Nav2 stack drives at
+    # all, independently of the route.
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      # Sized for a driveway, not the 100 m loop.
+      Distance: 18.0
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Whole site
+      Pitch: 1.1
+      Yaw: 1.57
+    Saved:
+      - Class: rviz_default_plugins/Orbit
+        Distance: 6.0
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Name: Close follow
+        Pitch: 0.6
+        Yaw: 0.785
+Window Geometry:
+  Height: 900
+  Width: 1400

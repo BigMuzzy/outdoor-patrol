@@ -1,0 +1,65 @@
+<!--
+  Patrol behaviour tree — driveway variant.
+
+  Identical to patrol.xml except for RemovePassedGoals' radius. Kept as a
+  separate file rather than a parameter because the radius is coupled to
+  station_spacing_m, and the pair only makes sense read together.
+
+  patrol.xml uses radius="0.7" against a 2.0 m station spacing. The driveway
+  route puts stations 0.6 m apart (config/patrol_mission_driveway.yaml
+  derives that from the 1.0 m corner radius), and a removal radius larger
+  than the spacing drops more than one station per pass — the robot then
+  aims at a station two ahead and cuts the corner it is standing in.
+
+  0.25 m keeps the radius well under the 0.6 m spacing while still being
+  larger than one control step at 0.4 m/s.
+
+  Everything else — the recovery branch, SmoothPath, the FollowPath /
+  FollowPathRPP switch described in patrol.xml — is unchanged, so a Phase 4
+  edit to patrol.xml should be mirrored here.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
+            <Sequence>
+              <!-- Reactive: RemovePassedGoals is re-evaluated while the
+                   planner action is still running, so stations the robot has
+                   already driven past drop out of the remaining goal list. -->
+              <ReactiveSequence>
+                <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.25"/>
+                <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
+              </ReactiveSequence>
+              <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}"
+                          smoother_id="simple_smoother" max_smoothing_duration="0.5"
+                          check_for_collisions="false"/>
+            </Sequence>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context"
+                              service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
+                                service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5.0"/>
+          <BackUp backup_dist="0.15" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

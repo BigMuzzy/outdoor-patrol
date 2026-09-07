@@ -1,0 +1,22 @@
+# Test fixture: a 20 m square loop at the sim datum, written in the exact
+# layout route_file.dumps() produces so a change in that writer shows up here.
+#
+# Corners are counter-clockwise from the south-west, with a midpoint on each
+# side: 8 samples, 10 m apart, yaw already REP-103 (CCW from east).
+#
+version: 1
+recorded: 2026-09-05T09:14:22Z
+source: odometry_global
+frame: base_link
+loop: true
+lane_half_width_m: 2.000
+datum: {latitude: -41.286460000, longitude: 174.776236000, altitude: 10.000}
+samples:
+  - {lat: -41.286460000, lon: 174.776236000, alt:   10.000, yaw:  0.000000, fix: fixed , sigma_h:  0.012, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286460000, lon: 174.776355529, alt:   10.000, yaw:  0.000000, fix: fixed , sigma_h:  0.013, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286460000, lon: 174.776475058, alt:   10.000, yaw:  1.570796, fix: fixed , sigma_h:  0.011, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286370018, lon: 174.776475058, alt:   10.000, yaw:  1.570796, fix: fixed , sigma_h:  0.014, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286280035, lon: 174.776475058, alt:   10.000, yaw:  3.141593, fix: fixed , sigma_h:  0.012, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286280035, lon: 174.776355529, alt:   10.000, yaw:  3.141593, fix: fixed , sigma_h:  0.015, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286280035, lon: 174.776236000, alt:   10.000, yaw: -1.570796, fix: fixed , sigma_h:  0.013, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
+  - {lat: -41.286370018, lon: 174.776236000, alt:   10.000, yaw: -1.570796, fix: fixed , sigma_h:  0.012, shoulder_left_m: 1.00, shoulder_right_m: 1.00}
