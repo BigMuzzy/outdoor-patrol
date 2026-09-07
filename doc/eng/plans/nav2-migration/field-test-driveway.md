@@ -85,6 +85,11 @@ ros2 launch outdoor_patrol_bringup rviz.launch.py \
   rviz_config:=$(ros2 pkg prefix outdoor_patrol_nav)/share/outdoor_patrol_nav/config/field.rviz
 
 # 2. Health. GNSS fix quality, satellite counts, ANT2 heading, mission state.
+#    rqt_robot_monitor reads /diagnostics_agg, NOT /diagnostics, so the
+#    aggregator has to be running or Robot Monitor sits on "No messages
+#    received" forever while the drivers publish happily. Run it first.
+ros2 run diagnostic_aggregator aggregator_node --ros-args \
+  --params-file $(ros2 pkg prefix outdoor_patrol_nav)/share/outdoor_patrol_nav/config/diagnostics_analyzers.yaml &
 ros2 run rqt_robot_monitor rqt_robot_monitor
 
 # 3. Numbers over time.

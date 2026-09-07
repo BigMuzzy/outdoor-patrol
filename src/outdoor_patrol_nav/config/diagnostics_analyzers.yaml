@@ -1,0 +1,73 @@
+# diagnostic_aggregator analyzers for the field readout.
+#
+# rqt_robot_monitor subscribes to /diagnostics_agg, NOT to /diagnostics. The
+# drivers publish the latter; without an aggregator in between, Robot Monitor
+# connects successfully and displays "No messages received" forever, which
+# reads as "the robot is not publishing" rather than "nothing is aggregating".
+# That is the whole reason this file exists.
+#
+# Run it wherever you are watching from -- the node is a pure view concern and
+# has no hardware dependency:
+#
+#   ros2 run diagnostic_aggregator aggregator_node --ros-args \
+#     --params-file $(ros2 pkg prefix outdoor_patrol_nav)/share/outdoor_patrol_nav/config/diagnostics_analyzers.yaml
+#
+# The `startswith` strings are matched against the diagnostic status NAMES the
+# nodes publish, which are of the form "<node>: <task>". They are:
+#
+#   um982_driver: GNSS                            <- fix, satellites, ANT2
+#   imu_driver: IMU
+#   ekf_global: odometry/filtered topic status
+#   ekf_filter_node: odometry/filtered topic status
+#   scan_box_filter: Heartbeat
+#   lifecycle_manager_navigation: Nav2 Health
+#   patrol_mission: mission                       <- only while a route is running
+#
+# If a group shows "Stale", the node behind it is not publishing. That is a
+# real signal, not a display artefact -- one of these going stale mid-run is
+# the first thing to check.
+analyzers:
+  ros__parameters:
+    path: Robot
+
+    # Everything an operator watches before pressing go. Grouped first
+    # because it is the group that decides whether the run can happen at all.
+    localization:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: Localization
+      analyzers:
+        gnss:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: GNSS
+          startswith: [ 'um982_driver' ]
+        imu:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: IMU
+          startswith: [ 'imu_driver' ]
+        ekf:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: EKF
+          startswith: [ 'ekf_global', 'ekf_filter_node' ]
+
+    # The mission layer. Absent until patrol_mission starts, which is correct:
+    # there is no mission to report on before then.
+    mission:
+      type: diagnostic_aggregator/GenericAnalyzer
+      path: Mission
+      startswith: [ 'patrol_mission' ]
+
+    navigation:
+      type: diagnostic_aggregator/GenericAnalyzer
+      path: Navigation
+      startswith: [ 'lifecycle_manager_navigation' ]
+
+    sensors:
+      type: diagnostic_aggregator/GenericAnalyzer
+      path: Sensors
+      startswith: [ 'scan_box_filter', 'sllidar' ]
+
+# NOTE: no catch-all analyzer. diagnostic_aggregator already files unmatched
+# statuses under "Other" by itself, and adding an explicit one that matches
+# everything does not extend the coverage -- it DUPLICATES every status, so
+# each fault appears twice in Robot Monitor under two different paths. Left
+# out deliberately; the automatic Other is the catch-all.

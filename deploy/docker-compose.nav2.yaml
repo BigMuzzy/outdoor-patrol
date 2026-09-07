@@ -20,6 +20,16 @@
 #
 # ── Field session ──────────────────────────────────────────────────────────
 #
+# FIRST, on a robot that already has a session's worth of state: point
+# DATA_DIR at it. /data holds the NTRIP credentials, the recorded routes and
+# the reports, and none of those belong to a branch -- they belong to the
+# robot. A fresh clone has an empty ./data, and the visible symptom of
+# missing ntrip.yaml is not an error but a GNSS quietly sitting in SPS with
+# no corrections, which looks like poor sky view. Put this in deploy/.env:
+#
+#   DATA_DIR=/home/ubuntu/code/outdoor-patrol/deploy/data
+#   NTRIP_PARAMS=/data/ntrip.yaml
+#
 #   # 0. once, to build
 #   docker compose -f deploy/docker-compose.nav2.yaml build
 #
@@ -52,7 +62,7 @@ x-common: &common
     RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     ROS_LOCALHOST_ONLY: "0"
   volumes:
-    - ./data:/data
+    - ${DATA_DIR:-./data}:/data
 
 services:
   # Sensors, localization and the safety brake. Same launch as the stock
