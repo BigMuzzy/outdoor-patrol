@@ -46,8 +46,8 @@ struct KsxtSentence
   std::optional<double> roll_deg;
   uint8_t position_quality{0};
   uint8_t heading_quality{0};
-  std::optional<uint16_t> num_satellites_position;
-  std::optional<uint16_t> num_satellites_heading;
+  std::optional<uint16_t> num_satellites_position;  ///< KSXT f14 #msolnSVs (ANT1)
+  std::optional<uint16_t> num_satellites_heading;   ///< KSXT f13 #hsolnSVs (ANT2)
   std::optional<double> velocity_east_mps;  ///< converted from km/h
   std::optional<double> velocity_north_mps;
   std::optional<double> velocity_up_mps;

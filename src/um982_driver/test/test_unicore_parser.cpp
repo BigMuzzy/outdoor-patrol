@@ -25,7 +25,9 @@ static std::string with_xor(const std::string & body)
 TEST(UnicoreParser, KsxtParsesPositionHeadingAndQuality)
 {
   // Body: KSXT,utc,lon,lat,h,heading,pitch,track,sog_kmh,roll,
-  //       pos_q,hdg_q,nsats_pos,nsats_hdg,ve,vn,vu
+  //       pos_q,hdg_q,nsats_hdg,nsats_pos,ve,vn,vu
+  // Field 13 is #hsolnSVs (heading/slave, ANT2) and field 14 is #msolnSVs
+  // (master, ANT1) -- heading first, then position.
   auto s = with_xor(
     "KSXT,012345.00,121.5031,37.3712,18.20,123.45,0.5,123.0,3.60,0.1,"
     "4,4,12,11,1.00,3.40,0.10");
@@ -42,8 +44,11 @@ TEST(UnicoreParser, KsxtParsesPositionHeadingAndQuality)
   EXPECT_NEAR(*k->speed_mps, 3.60 / 3.6, 1e-9);
   EXPECT_EQ(k->position_quality, 4u);
   EXPECT_EQ(k->heading_quality, 4u);
+  // Distinct values, so a swap of the two cannot pass.
+  ASSERT_TRUE(k->num_satellites_heading.has_value());
+  EXPECT_EQ(*k->num_satellites_heading, 12u);
   ASSERT_TRUE(k->num_satellites_position.has_value());
-  EXPECT_EQ(*k->num_satellites_position, 12u);
+  EXPECT_EQ(*k->num_satellites_position, 11u);
   ASSERT_TRUE(k->velocity_east_mps.has_value());
   EXPECT_NEAR(*k->velocity_east_mps, 1.00 / 3.6, 1e-9);
   ASSERT_TRUE(k->velocity_north_mps.has_value());

@@ -139,14 +139,19 @@ std::optional<KsxtSentence> parse_ksxt(std::string_view sentence)
       k.heading_quality = static_cast<uint8_t>(*v & 0xFF);
     }
   }
+  // Satellite counts, in Unicore's order: field 13 is #hsolnSVs, the count
+  // used for the HEADING (slave, ANT2) solution, and field 14 is #msolnSVs,
+  // the master (ANT1) count behind the position solution. Live data confirms
+  // it: with ANT2 disconnected these read 0 and 24 respectively while GGA
+  // simultaneously reported 24 satellites and an RTK-fixed position.
   if (fields.size() > 12) {
     if (auto v = to_int(fields[12])) {
-      k.num_satellites_position = static_cast<uint16_t>(*v & 0xFFFF);
+      k.num_satellites_heading = static_cast<uint16_t>(*v & 0xFFFF);
     }
   }
   if (fields.size() > 13) {
     if (auto v = to_int(fields[13])) {
-      k.num_satellites_heading = static_cast<uint16_t>(*v & 0xFFFF);
+      k.num_satellites_position = static_cast<uint16_t>(*v & 0xFFFF);
     }
   }
   if (fields.size() > 14) {
