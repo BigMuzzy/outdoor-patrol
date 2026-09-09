@@ -80,8 +80,35 @@ Simulation never showed it because the sim publishes a valid heading from
 
 ## Fix
 
-Restart the stack **while the heading is healthy**, so the rotation is computed
-from a valid heading:
+**The launch file now gates this automatically.**
+[`global_localization.launch.py`](../../../../src/outdoor_patrol_loc/launch/global_localization.launch.py)
+starts a small `wait_for_heading` node first and only launches
+`navsat_transform` once `/gnss/heading` has actually published. Two arguments
+control it:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `require_heading` | `true` | Hold `navsat_transform` until the heading is live |
+| `heading_wait_timeout` | `0.0` | Seconds before giving up; `0` waits forever |
+
+On timeout `navsat_transform` is **not** started, deliberately: a stack that
+has visibly not localized is a safer failure than one that has silently
+localized into a wrong frame. Set `require_heading:=false` only for a stack
+with no heading source at all.
+
+So a cold start after a battery swap now blocks until ANT2 is solving, and
+logs why while it waits:
+
+```
+[wait_for_heading]: Waiting for 5 messages on /gnss/heading before navsat_transform starts (timeout none).
+[wait_for_heading]: Still waiting for GNSS heading on /gnss/heading (0/5 after 10 s). The dual-antenna baseline is probably unsolved; check ANT2.
+[wait_for_heading]: GNSS heading is live on /gnss/heading (5 messages); starting navsat_transform.
+```
+
+### Recovering a session that already started wrong
+
+If the stack is already running with a rotated map frame — an older image, or
+`require_heading:=false` — restart it **while the heading is healthy**:
 
 ```bash
 # confirm first -- want HdgQual 3 and /gnss/heading publishing
@@ -101,12 +128,6 @@ ssh robot 'docker logs --since 5m outdoor-patrol 2>&1 | grep -E "Datum|Dropping 
 
 A healthy restart shows the `Datum` lines and **zero** `Dropping GNSS heading`
 warnings.
-
-⚠️ **This recurs on every cold start where the heading is not yet valid** — in
-particular a power-on after a battery recharge, when the receiver still has to
-reacquire ANT2. Until the launch gates `navsat_transform` on a valid
-`/gnss/heading`, treat "restart the stack once the heading is good" as part of
-the bring-up procedure, not as a one-off repair.
 
 ## How to verify
 

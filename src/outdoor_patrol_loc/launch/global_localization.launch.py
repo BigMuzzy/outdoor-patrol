@@ -21,7 +21,10 @@ per-site origin instead, which is what makes recorded routes comparable
 across sessions.
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+                            LogInfo, RegisterEventHandler)
+from launch.conditions import IfCondition, UnlessCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -34,6 +37,8 @@ def generate_launch_description() -> LaunchDescription:
     use_sim_time = LaunchConfiguration('use_sim_time')
     fix_topic = LaunchConfiguration('fix_topic')
     datum_params_file = LaunchConfiguration('datum_params_file')
+    require_heading = LaunchConfiguration('require_heading')
+    heading_wait_timeout = LaunchConfiguration('heading_wait_timeout')
 
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
@@ -56,6 +61,24 @@ def generate_launch_description() -> LaunchDescription:
                     'this at a file with wait_for_datum + datum to pin the '
                     'origin to a fixed per-site value, which is what makes '
                     'saved routes comparable across sessions.',
+    )
+    require_heading_arg = DeclareLaunchArgument(
+        'require_heading',
+        default_value='true',
+        description='Hold navsat_transform until /gnss/heading is publishing. '
+                    'navsat_transform fixes the UTM->map transform once and '
+                    'offers no datum service to re-seed it, so starting it '
+                    'before the dual-antenna baseline is solved bakes a bad '
+                    'frame in for the session. Set false only when running '
+                    'without a heading source.',
+    )
+    heading_wait_timeout_arg = DeclareLaunchArgument(
+        'heading_wait_timeout',
+        default_value='0.0',
+        description='Seconds to wait for /gnss/heading before giving up; 0 '
+                    'waits indefinitely. On timeout navsat_transform is NOT '
+                    'started -- a stack that has not localized is a safer, '
+                    'louder failure than one localized into a wrong frame.',
     )
 
     # M1 local EKF (odom -> base_link), reused unchanged.
@@ -89,23 +112,69 @@ def generate_launch_description() -> LaunchDescription:
         ],
     )
 
-    # GNSS <-> map-frame bridge.
-    navsat = Node(
-        package='robot_localization',
-        executable='navsat_transform_node',
-        name='navsat_transform',
+    # navsat_transform is built twice from one definition: once for the gated
+    # path and once for the ungated one. Keeping a single factory means the
+    # remappings cannot drift apart between them.
+    def make_navsat(condition=None) -> Node:
+        return Node(
+            package='robot_localization',
+            executable='navsat_transform_node',
+            name='navsat_transform',
+            output='screen',
+            condition=condition,
+            parameters=[
+                PathJoinSubstitution([pkg, 'config', 'navsat.yaml']),
+                datum_params_file,
+                {'use_sim_time': use_sim_time},
+            ],
+            remappings=[
+                ('gps/fix', fix_topic),
+                ('imu', '/gnss/heading'),
+                ('odometry/filtered', '/odometry/global'),
+                ('odometry/gps', '/odometry/gps'),
+            ],
+        )
+
+    # Hold navsat_transform until the heading is real. navsat_transform derives
+    # the UTM->map transform once, from the first instant it holds a fix, an
+    # odometry pose and an IMU orientation at the same time, and there is no
+    # datum service to re-seed it afterwards -- so that one computation decides
+    # the frame for the whole session. On a cold start the UM982 needs time to
+    # reacquire ANT2, and until it does um982_driver correctly publishes no
+    # heading at all.
+    heading_waiter = Node(
+        package='outdoor_patrol_loc',
+        executable='wait_for_heading',
+        name='wait_for_heading',
         output='screen',
-        parameters=[
-            PathJoinSubstitution([pkg, 'config', 'navsat.yaml']),
-            datum_params_file,
-            {'use_sim_time': use_sim_time},
-        ],
-        remappings=[
-            ('gps/fix', fix_topic),
-            ('imu', '/gnss/heading'),
-            ('odometry/filtered', '/odometry/global'),
-            ('odometry/gps', '/odometry/gps'),
-        ],
+        condition=IfCondition(require_heading),
+        parameters=[{
+            'topic': '/gnss/heading',
+            'timeout_s': heading_wait_timeout,
+            'use_sim_time': use_sim_time,
+        }],
+    )
+
+    # require_heading:=false keeps the original behaviour for stacks with no
+    # heading source at all.
+    navsat_ungated = make_navsat(condition=UnlessCondition(require_heading))
+
+    def on_waiter_exit(event, context):
+        # A non-zero exit means the waiter timed out. Starting navsat_transform
+        # then would defeat the point of having waited.
+        if event.returncode == 0:
+            return [make_navsat()]
+        return [LogInfo(
+            msg='wait_for_heading exited non-zero; navsat_transform NOT '
+                'started. The map frame would have been fixed from a heading '
+                'that does not exist. Check ANT2, then relaunch.')]
+
+    navsat_after_heading = RegisterEventHandler(
+        OnProcessExit(
+            target_action=heading_waiter,
+            on_exit=on_waiter_exit,
+        ),
+        condition=IfCondition(require_heading),
     )
 
     # Global EKF: owns map -> odom.
@@ -127,9 +196,13 @@ def generate_launch_description() -> LaunchDescription:
         use_sim_time_arg,
         fix_topic_arg,
         datum_params_arg,
+        require_heading_arg,
+        heading_wait_timeout_arg,
         local_ekf,
         heading_to_imu,
         confidence_gate,
-        navsat,
+        heading_waiter,
+        navsat_after_heading,
+        navsat_ungated,
         global_ekf,
     ])

@@ -18,9 +18,14 @@ ament_target_dependencies(heading_to_imu rclcpp geometry_msgs sensor_msgs)
 add_executable(confidence_gate src/confidence_gate.cpp)
 ament_target_dependencies(confidence_gate rclcpp sensor_msgs)
 
+# wait_for_heading: gate navsat_transform on a live GNSS heading.
+add_executable(wait_for_heading src/wait_for_heading.cpp)
+ament_target_dependencies(wait_for_heading rclcpp sensor_msgs)
+
 install(TARGETS
   heading_to_imu
   confidence_gate
+  wait_for_heading
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch config
