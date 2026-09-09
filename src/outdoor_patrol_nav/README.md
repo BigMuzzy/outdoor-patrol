@@ -97,7 +97,7 @@ src/outdoor_patrol_sim/scripts/run_validation.sh /tmp/val teach r3 r3n
 |---|---|---|
 | `route_path` | `""` | Required. Refuses `source: raw_antenna`. |
 | `fix_topic` | `/um982_driver/fix` | **Raw**, not `/gnss/fix_gated`: the gate multiplies covariance by 1000 on a degraded fix, which would turn the slow/stop pair into a cliff at 5 cm. |
-| `station_spacing_m` | `10.0` | Dense enough that Hybrid-A* returns the centerline, sparse enough not to re-plan between neighbours. |
+| `station_spacing_m` | `2.0` | Validated for the 100 m world's 5 m corners; see progress finding 7. |
 | `sigma_slow_m` / `sigma_stop_m` | `0.10` / `0.50` | Same numbers `confidence_gate` uses. |
 | `laps` | `1.0` | Loop routes only; ignored with a warning on an open route. |
 
@@ -119,6 +119,12 @@ covered by `run_validation.sh` R3-N and R5-N.
 
 ## Not here yet
 
-`map_server`, the keepout/speed costmap filters and `route_to_map` arrive in
-Phase 2; the safe-spot retreat BT nodes in Phase 4; `collision_monitor` in
-Phase 6. There is no occupancy map of the site — GNSS is the map.
+The [revised simulation-first plan](../../doc/eng/plans/nav2-migration/plan.md)
+puts standard map masks/filters and Collision Monitor validation in Phase 2,
+then predefined traffic-bay maneuvers using stock navigation actions in
+Phase 3. An offline `route_to_map` converter is optional, not a prerequisite
+for testing standard mask fixtures. Camera/terrain integration follows in
+Phases 4/5; Jetson and field qualification are deferred to Phase 6.
+
+These are planned changes, not implemented features. GNSS provides
+localization, not a map of where the terrain is safe to drive.

@@ -1,0 +1,61 @@
+digraph navigation {
+  graph [rankdir=TB, splines=polyline, bgcolor="white", pad=0.25, nodesep=0.3, ranksep=0.45,
+         fontname="DejaVu Sans", fontsize=16,
+         label="Current Nav2 mission, costmaps and command path", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eaf2ff", color="#456386",
+        fontname="DejaVu Sans", fontsize=11, margin="0.14,0.10"];
+  edge [color="#526174", fontname="DejaVu Sans", fontsize=9, arrowsize=0.7];
+
+  inputs [shape=note, fillcolor="#fff3d6",
+          label="Mission inputs\nroute YAML (file)\n/um982_driver/fix (raw)\n/odometry/global"];
+  mission [label="/patrol_mission\nroute projection + goal chunks\nGNSS cancel/resume + telemetry"];
+  navsat [label="/navsat_transform"];
+  scan [shape=ellipse, fillcolor="#f5f6f8", label="/scan"];
+
+  lifecycle [label="/lifecycle_manager_navigation\nmanages all six servers"];
+  bt [label="/bt_navigator\npatrol XML"];
+  planner [label="/planner_server\nSmac Hybrid-A*"];
+  smoother [label="/smoother_server\npath smoothing"];
+  controller [label="/controller_server\nMPPI / FollowPath"];
+  behaviors [label="/behavior_server\nSpin / BackUp / Wait"];
+  local_map [fillcolor="#f1edff", label="/local_costmap/local_costmap\nodom frame\ninside controller process"];
+  global_map [fillcolor="#f1edff", label="/global_costmap/global_costmap\nmap frame\ninside planner process"];
+  velocity [label="/velocity_smoother\nOPEN_LOOP, 20 Hz"];
+
+  safety [fillcolor="#e4f4e8", color="#43704a", label="/scan_safety\nforward-only lidar brake"];
+  drive [shape=component, fillcolor="#ffe8e5", color="#92534c",
+         label="/esp32_drive (hardware)\nvia micro-ROS agent\nor Gazebo bridge (simulation)"];
+  alternate [style="rounded,dashed,filled", fillcolor="#f5f6f8",
+             label="Alternative command source\nteleop OR route_follower OR teach driver\nnot concurrent with Nav2"];
+
+  { rank=same; mission; navsat; }
+  { rank=same; bt; lifecycle; }
+  { rank=same; planner; global_map; scan; }
+  { rank=same; controller; local_map; behaviors; }
+  { rank=same; safety; alternate; }
+
+  inputs -> mission;
+  mission -> navsat [dir=both, style=dashed, label="/fromLL service"];
+  mission -> bt [dir=both, style=dashed, label="/navigate_through_poses"];
+  lifecycle -> bt [style=dashed, label="lifecycle"];
+  bt -> planner [style=dashed, dir=both, label="ComputePathThroughPoses"];
+  bt -> smoother [style=dashed, dir=both, label="SmoothPath", constraint=false];
+  bt -> controller [style=dashed, dir=both, label="FollowPath", constraint=false];
+  bt -> behaviors [style=dashed, dir=both, label="recoveries", constraint=false];
+  planner -> smoother [style=invis, weight=8];
+  smoother -> controller [style=invis, weight=8];
+  scan -> global_map [label="/scan", constraint=false];
+  scan -> local_map [label="/scan"];
+  global_map -> planner [style=dotted, label="costmap", constraint=false];
+  local_map -> controller [style=dotted, label="costmap", constraint=false];
+  controller -> velocity [label="/cmd_vel_nav"];
+  behaviors -> velocity [label="/cmd_vel_nav"];
+  velocity -> safety [label="/cmd_vel_raw"];
+  alternate -> safety [label="/cmd_vel_raw", style=dashed];
+  scan -> safety [label="/scan", constraint=false];
+  safety -> drive [label="/cmd_vel\ngeometry_msgs/Twist", color="#92534c", penwidth=2];
+
+  legend [shape=note, fillcolor="#fffdf3", color="#a8a28d",
+          label="Dashed: actions/services, lifecycle or alternative path.\nDotted: in-process use. Solid: topic/file flow.\nSecondary odometry, TF and behavior-costmap inputs are in the document.\nNo Collision Monitor, masks or traffic-bay policy yet."];
+  drive -> legend [style=invis];
+}

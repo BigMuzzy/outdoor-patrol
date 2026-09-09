@@ -1,0 +1,36 @@
+digraph transforms {
+  graph [rankdir=TB, bgcolor="white", pad=0.25, nodesep=0.35, ranksep=0.65,
+         fontname="DejaVu Sans", fontsize=16,
+         label="Current TF tree: frames and broadcaster ownership", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eaf2ff", color="#456386",
+        fontname="DejaVu Sans", fontsize=12, margin="0.16,0.12"];
+  edge [color="#526174", fontname="DejaVu Sans", fontsize=10, arrowsize=0.7];
+
+  map [label="map"];
+  odom [label="odom"];
+  base [label="base_link"];
+  footprint [label="base_footprint"];
+  gnss [label="gnss_link\nANT1 reference"];
+  imu [label="imu_link"];
+  lidar [label="lidar_link"];
+  left [label="left_wheel_link"];
+  right [label="right_wheel_link"];
+
+  map -> odom [label="/ekf_global\n/tf at configured 30 Hz", color="#43704a", penwidth=2];
+  odom -> base [label="/ekf_filter_node\n/tf at configured 30 Hz", color="#43704a", penwidth=2];
+  base -> footprint [label="z = -0.150 m", style=dashed];
+  base -> gnss [label="xyz = 0.28, -0.42, 0.18", style=dashed];
+  base -> imu [label="xyz = 0.281, 0, 0.17\nrpy = 0, 0, 0", style=dashed];
+  base -> lidar [label="xyz = 0.512, 0, 0.05\nyaw = 3.14159 rad", style=dashed];
+  base -> left [label="fixed on hardware;\njoint_states in sim", style=dashed];
+  base -> right [label="fixed on hardware;\njoint_states in sim", style=dashed];
+
+  legend [shape=note, fillcolor="#fffdf3", color="#a8a28d", fontsize=11,
+          label="Dashed edges: robot_state_publisher from URDF + chassis.yaml.\nHardware fixed joints use /tf_static; sim wheel joints use /tf.\nThe two EKFs use two_d_mode=true: this is not a 3D attitude estimate.\nNo world -> map or utm -> map broadcaster is configured.\nNo camera frame exists yet. Extra simulation-only caster omitted."];
+  footprint -> legend [style=invis];
+  gnss -> legend [style=invis];
+  imu -> legend [style=invis];
+  lidar -> legend [style=invis];
+  left -> legend [style=invis];
+  right -> legend [style=invis];
+}

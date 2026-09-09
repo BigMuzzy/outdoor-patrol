@@ -1,0 +1,42 @@
+digraph simulation {
+  graph [rankdir=TB, bgcolor="white", pad=0.25, nodesep=0.35, ranksep=0.55,
+         fontname="DejaVu Sans", fontsize=16,
+         label="Simulation replaces the hardware interfaces, not the localization stack", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eaf2ff", color="#456386",
+        fontname="DejaVu Sans", fontsize=11, margin="0.14,0.10"];
+  edge [color="#526174", fontname="DejaVu Sans", fontsize=9, arrowsize=0.7];
+
+  gazebo [shape=component, fillcolor="#fff3d6",
+          label="Gazebo Harmonic systems\nDiffDrive, lidar, IMU, NavSat,\ntruth odometry, joint states\n(not a ROS driver node)"];
+  bridge [label="/gz_bridge\nros_gz_bridge / parameter_bridge"];
+  odom [label="/odom_sim\nadd odometry covariance"];
+  gnss [label="/gnss_sim\nadd fix noise/covariance\nsynthesize heading"];
+  shared [shape=component, fillcolor="#e4f4e8", color="#43704a",
+          label="Shared ROS graph\ndual EKF, navsat_transform,\nconfidence_gate, heading_to_imu\nscan_safety; optional Nav2 servers"];
+  rsp [label="/robot_state_publisher\nsim robot description"];
+  truth [shape=ellipse, fillcolor="#fff3d6", label="/odom_truth\nSIMULATION ONLY"];
+  bag [shape=folder, fillcolor="#fff3d6",
+       label="rosbag2 -> offline scorers\ntruth + commands + mission status"];
+  teach [style="rounded,dashed,filled",
+         label="/sim_route_driver\nteach mode only\nnot the autonomous controller"];
+  brake [fillcolor="#e4f4e8", color="#43704a", label="/scan_safety\nsame node as shared graph"];
+
+  gazebo -> bridge [label="Gazebo sensor messages"];
+  bridge -> gazebo [label="/cmd_vel (ROS -> Gazebo)"];
+  bridge -> odom [label="/odom_sim"];
+  odom -> shared [label="/odom"];
+  bridge -> gnss [label="/gnss/fix_sim"];
+  gnss -> shared [label="/um982_driver/fix\n/gnss/heading"];
+  bridge -> shared [label="/imu_driver/data\n/scan"];
+  bridge -> rsp [label="/joint_states"];
+  bridge -> truth [label="truth odometry"];
+  truth -> gnss [label="sensor-model yaw input"];
+  truth -> bag [label="ground-truth scoring"];
+  truth -> teach [label="repeatable teach pass"];
+  teach -> brake [label="/cmd_vel_raw"];
+  brake -> bridge [label="/cmd_vel", color="#92534c", penwidth=2];
+
+  note [shape=note, fillcolor="#fffdf3", color="#a8a28d",
+        label="/clock is bridged to ROS; sim nodes use_sim_time=true.\nLocalization starts after clock gate + 3 s; Nav2 after + 8 s.\nThe harness starts patrol_mission separately for r3n/r5n.\nTruth feeds sensor synthesis, teaching and scoring only:\nnever directly fuse /odom_truth into the EKFs.\nNo real sensor drivers, NTRIP or micro-ROS agent in this launch."];
+  shared -> note [style=invis];
+}

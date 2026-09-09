@@ -1,0 +1,48 @@
+digraph localization {
+  graph [rankdir=TB, bgcolor="white", pad=0.25, nodesep=0.35, ranksep=0.6,
+         fontname="DejaVu Sans", fontsize=16,
+         label="Current hardware sensor and localization network", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eaf2ff", color="#456386",
+        fontname="DejaVu Sans", fontsize=11, margin="0.14,0.10"];
+  edge [color="#526174", fontname="DejaVu Sans", fontsize=9, arrowsize=0.7];
+
+  caster [shape=ellipse, fillcolor="#fff3d6", label="NTRIP caster\nexternal network service"];
+  ntrip [label="/ntrip_client"];
+  gnss [label="/um982_driver\nlifecycle sensor driver"];
+  gate [label="/confidence_gate"];
+  heading [label="/heading_to_imu\nyaw-only adapter"];
+  navsat [label="/navsat_transform\nGNSS <-> map coordinates"];
+  global_ekf [fillcolor="#e4f4e8", color="#43704a",
+              label="/ekf_global\nmap -> odom\nGNSS x,y + heading + wheel velocity + gyro z"];
+  local_ekf [fillcolor="#e4f4e8", color="#43704a",
+             label="/ekf_filter_node\nodom -> base_link\nwheel velocity only"];
+  drive [shape=component, fillcolor="#fff3d6",
+         label="/esp32_drive\nfirmware ROS node\nthrough micro-ROS agent process"];
+  imu [label="/imu_driver\nlifecycle sensor driver"];
+  lidar [label="/sllidar_node"];
+  scan_filter [label="/scan_box_filter\nlaser_filters / LaserScanBoxFilter"];
+  scan [shape=ellipse, fillcolor="#f5f6f8", label="/scan\nNav2 costmaps + scan_safety + RViz"];
+  consumers [shape=note, fillcolor="#fffdf3", color="#a8a28d",
+             label="Other consumers\nRaw fix -> patrol_mission\nRecorder quality: raw with route.yaml;\ngated with bare/Compose/harness defaults\nGlobal odometry -> mission, recorder, RViz\nLocal odometry -> Nav2 motion feedback"];
+
+  caster -> ntrip [dir=both, label="RTCM download / GGA upload"];
+  ntrip -> gnss [label="/rtcm"];
+  gnss -> ntrip [label="/um982_driver/nmea_sentence"];
+  gnss -> gate [label="/um982_driver/fix"];
+  gnss -> heading [label="/um982_driver/heading"];
+  gate -> navsat [label="/gnss/fix_gated"];
+  heading -> navsat [label="/gnss/heading"];
+  heading -> global_ekf [label="/gnss/heading\nabsolute yaw"];
+  navsat -> global_ekf [label="/odometry/gps"];
+  global_ekf -> navsat [label="/odometry/global", constraint=false];
+  drive -> local_ekf [label="/odom"];
+  drive -> global_ekf [label="/odom"];
+  imu -> global_ekf [label="/imu_driver/data\ngyro yaw rate only"];
+  lidar -> scan_filter [label="/scan_raw"];
+  scan_filter -> scan [label="/scan"];
+  global_ekf -> consumers [label="/odometry/global"];
+  local_ekf -> consumers [label="/odometry/filtered"];
+
+  { rank=same; gnss; drive; imu; lidar; }
+  { rank=same; gate; heading; local_ekf; scan_filter; }
+}

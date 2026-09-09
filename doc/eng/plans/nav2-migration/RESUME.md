@@ -1,22 +1,39 @@
 # RESUME — note to self
 
-Updated 2026-09-09, after Phases 0 and 1 were built, scored in sim, and
-**deployed to the robot**. Earlier versions of this file said "nothing is
-built, tested or scored" (2026-09-05) and then "done and passing in sim"
-(2026-09-06). Both are superseded.
+Updated 2026-09-09 UTC after simulation-first replanning for Jetson Orin Nano
+and monocular camera perception. Phases 0 and 1 were built, scored in sim,
+and deployed to the previous RK3588 setup. **The onboard PC is now removed:
+do not start field work or treat that deployment as the current target.**
+
+For the checked-in node/topic/TF graph and configuration caveats, read
+[Current ROS configuration](../../ros-configuration.md), with editable diagrams.
 
 ## Where the work stopped
 
-**Phases 0 and 1 are done, passing, and on the robot.** The stack has never
-driven outdoors — that is the next thing, and nothing is blocking it. The one
-hardware fault that was (a dead IMU) turned out to be unpowered and is
-resolved.
+**Phases 0 and 1 passed in simulation; the stack has never driven outdoors.**
+Continue in simulation. Field gates are deferred until the hardware returns,
+not prerequisites for further sim work and not waived by it.
+
+The revised [plan.md](./plan.md) targets:
+
+- Jetson Orin Nano (advertised up to 67 TOPS; exact configuration TBD).
+- One RGB camera with learned monocular depth and terrain segmentation.
+- Dual-antenna GNSS, 2D lidar and the **retained IMU**, with existing chassis
+  odometry, motor control, watchdog and operator stop.
+- Predefined-route patrol, bounded obstacle detours and **predefined safe
+  spots for yielding to traffic**. Stopping in the lane is not a successful
+  yield; the camera must not invent permission to drive on unknown ground.
+- Community packages first: stock Nav2 navigation/BT components, standard
+  filters and Collision Monitor, existing perception models/wrappers.
+  Only narrowly scoped mission/perception integration code if reuse leaves
+  a demonstrated gap.
 
 - Phase 0: 3/3 PASS, mean R3 RMS 0.0645 m, `NAV_MAX_RMS` = 0.129.
 - Phase 1: R3-N 0.0883 m RMS / 0.219 m peak / 0.988 laps / 1.68 s longest
   stop; R5-N 452 degraded cycles, final speed 0.0. Both PASS.
 - Re-scored after the telemetry additions: R3-N 0.087 m. No regression.
-- Deployed: every Nav2 server configures and activates on the RK3588.
+- Historical deployment: every Nav2 server configured and activated on the
+  RK3588. No Jetson timing or camera accuracy measurements exist yet.
 
 Numbers and the full finding list are in [progress.md](./progress.md); the
 baseline table is in [runs/baseline/baseline.md](./runs/baseline/baseline.md);
@@ -76,22 +93,31 @@ is what the deployment work was actually done from.
 
 ## To continue
 
-Ranked. Nothing here is blocked any more — the IMU was, and is not.
+Phases 2 onward are renumbered in the revised [plan.md](./plan.md); older
+phase references in historical notes describe the superseded plan.
 
-1. **Phase 0's two field prerequisites have still never been run**: the GNSS
-   soak (σ ≤ 0.05 m for 10 min) and `yaw_offset` (heading within 10° of true),
-   both in [field-validation-alley.md](../field-validation-alley.md) Phases 1
-   and 2. Nav2 depends on both more sharply than the follower did, and
-   `yaw_offset` in particular needs the IMU that was dead until 2026-09-09.
-2. **The driveway field test**, [field-test-driveway.md](./field-test-driveway.md).
-   Record a route with the `record` profile, then follow it with `nav2` +
-   `mission`. Everything is deployed and waiting. Confirm `/imu/data` is
-   publishing first — see below.
-3. **Phase 2**, starting with `route_to_map`. Read finding 2 in
-   [progress.md](./progress.md) first — the R4 scorer checks have to be
-   rewritten before there can be an R4-N, and that is Phase 2's first
-   deliverable, not an afterthought.
-4. **ADR-0004 can be written now**: parity is measured. Nav2 tracks the clean
+1. **Phase 2: static detours and the stop chain in sim.** Start with finding 2
+   in [progress.md](./progress.md): R4-N needs ground-truth obstacle scoring,
+   not the follower's commanded-offset assertions. Use a standard
+   corridor/bay-mask fixture and stock Nav2 filters before deciding whether
+   an offline `route_to_map` converter is needed. Validate Collision Monitor
+   early without bypassing the existing brake; no unvalidated reverse/spin.
+2. **Phase 3: predefined bay entry, waiting and rejoin**, using stock Nav2
+   goals and sim-only oracle traffic events. Test mission policy separately
+   from perception. Bay selection must respect approved access, visibility
+   and time available, not just "nearest spot behind".
+3. **Phases 4/5: actual RGB models and camera-triggered yielding.** Audit
+   supported Jetson/JetPack/ROS/model packages first. Keep ideal simulator
+   depth/labels separate from learned model inputs. Metric monocular depth,
+   terrain-to-costmap integration and traffic-clearance evidence are not
+   assumed solved by installing a network.
+4. **Hardware/field gates are deferred to Phase 6.** The GNSS soak
+   (σ ≤ 0.05 m for 10 min) and heading within 10° of true in
+   [field-validation-alley.md](../field-validation-alley.md) still apply,
+   followed by camera calibration, full-stack Jetson timing, actual braking
+   and the supervised [driveway test](./field-test-driveway.md). Do not
+   connect/deploy/drive while the onboard PC is removed.
+5. **ADR-0004 can be written now**: parity is measured. Nav2 tracks the clean
    road at 1.37× the follower's cross-track RMS (0.0883 vs 0.0645 m), inside
    the 2× bar. Before quoting 0.0645 as the follower's accuracy, read finding
    9 — a share of it may be the teach driver rather than the follower.
@@ -110,10 +136,14 @@ Not re-verified from the dev box, because the robot was powered down again
 first. On the next power-up, before recording a route:
 
 ```bash
-ros2 topic hz /imu/data     # expect ~100 Hz
+ros2 topic hz /imu_driver/data     # current source topic; expect ~100 Hz
 ```
 
-## The robot
+## The previous RK3588 deployment (historical)
+
+Retained for eventual recovery, not Jetson deployment instructions. The
+onboard PC is removed; these paths and images have not been qualified for
+the replacement hardware.
 
 Two container sets, two image tags, and they must not run at the same time.
 
@@ -230,8 +260,13 @@ which made the health screen permanently red until it was discarded.
 
 ## Decisions already made — do not re-litigate
 
-- Scope **was** Phase 0 + Phase 1, plus enough field telemetry to run the
-  driveway test. Phase 2 is the next scope decision.
+- Scope is now simulation-first development against the revised roadmap.
+  Phase 0/1 results stay frozen; the immediate next implementation is Phase 2.
+  No field operation until the replacement hardware is qualified.
+- **Reuse before new code.** Stock Nav2 actions, costmap filters and safety
+  components, existing perception models and standard ROS interfaces.
+  Predefined traffic bays are required. Monocular depth does not authorize
+  unrecorded off-road detours.
 - **Stock ROS tools over custom UI.** The field readout is RViz with
   `rviz_default_plugins`, `rqt_robot_monitor`, `rqt_plot` and
   `rqt_service_caller` — no bespoke panel. This was a user decision and it
@@ -239,8 +274,10 @@ which made the health screen permanently red until it was discarded.
   diagnostics, so only the dual-antenna half was new. The dashboard branch's
   `FieldDashboardPanel` is the road not taken here; if a future phase wants a
   panel, that is a reversal to argue for, not a gap to fill.
-- Runtime nodes and their libraries in C++; launch files and offline host
-  tools (`score_run.py`, `score_route.py`, `gen_patrol_road.py`) stay Python.
+- New robot-specific runtime nodes and libraries stay C++; launch files and
+  offline host tools (`score_run.py`, `score_route.py`, `gen_patrol_road.py`)
+  stay Python. Reuse upstream packages without rewriting them just to match
+  this language preference.
 - C++ ports are all-or-nothing: nothing in `outdoor_patrol_route` is
   converted, and the ~40-line route reader in `route_goals.cpp` is a reader,
   not a port of `route_file.py`.

@@ -1,21 +1,36 @@
 # Nav2 migration — progress
 
-Tracker for [plan.md](./plan.md). One row per phase; a phase is **done** only
-when its scored sim run passes and the numbers are pasted in below.
+Tracker for [plan.md](./plan.md). Simulation acceptance and hardware/field
+acceptance are separate: a scored sim pass permits further simulation work,
+not deployment. Results below are preserved from the previous hardware.
 
 **Last updated:** 2026-09-09
+
+For the source-verified node network, topics, TF ownership and selected
+parameter profiles, see [Current ROS configuration](../../ros-configuration.md).
+It distinguishes implemented launch wiring from this plan and historical
+deployment observations.
+
+**Replanned for simulation first:** the onboard PC is removed. The target is
+Jetson Orin Nano, one RGB camera with learned monocular depth and terrain
+segmentation, dual-antenna GNSS, 2D lidar and the retained IMU. Traffic yielding
+must use predefined safe spots. Prefer maintained community packages and
+stock Nav2 actions; minimize new code. Field prerequisites remain deferred,
+not waived. Phases 2 onward below use the revised numbering in
+[plan.md](./plan.md); older findings and log entries retain historical numbers.
 
 ## Status
 
 | Phase | What it delivers | State |
 |---|---|---|
-| 0 — freeze the baseline | three scored runs of the current follower | **done** — 3/3 PASS, mean R3 RMS 0.0645 m, `NAV_MAX_RMS` = 0.129. [baseline.md](./runs/baseline/baseline.md), [phase-0.md](./phase-0.md) |
-| 1 — Nav2 bring-up + clean-lap parity | `outdoor_patrol_nav`, R3-N, R5-N | **done** — R3-N and R5-N both PASS. Numbers below. [phase-1.md](./phase-1.md), [validation](./phase-1-validation.md) |
-| 2 — corridor as a costmap filter | `route_to_map`, keepout + speed masks, R4-N | not started |
-| 3 — RK3588 CPU budget + ADR-0004 | MPPI vs RPP measured on target | not started |
-| 4 — safe-spot retreat | route schema v2, BT nodes, R6-N | not started |
-| 5 — moving obstacles | `scan_tracker`, BT preemption | not started |
-| 6 — `collision_monitor` | last-resort stop independent of Nav2 | not started |
+| 0 — freeze the baseline | three scored runs of the current follower | **sim passed** — 3/3 PASS, mean R3 RMS 0.0645 m, `NAV_MAX_RMS` = 0.129. [baseline.md](./runs/baseline/baseline.md), [phase-0.md](./phase-0.md). GNSS soak/yaw field gates still deferred. |
+| 1 — Nav2 bring-up + clean-lap parity | `outdoor_patrol_nav`, R3-N, R5-N | **sim passed** — R3-N and R5-N both PASS; RK3588 activation verified, no outdoor drive. [phase-1.md](./phase-1.md), [validation](./phase-1-validation.md) |
+| 2 — bounded static detours + stop chain | ground-truth R4-N scoring, standard masks, early Collision Monitor validation | not started |
+| 3 — predefined bay maneuvers | stock navigation goals, minimal mission policy, oracle traffic events | not started |
+| 4 — camera/terrain integration | supported model/runtime selection, RGB model runs, qualified local constraints | not started |
+| 5 — camera-triggered yielding | real perception events, visibility/latency/fault sweeps | not started |
+| 6 — Jetson + field qualification | full-stack target benchmarks, calibration, braking and supervised field gates | deferred — hardware unavailable |
+| 7 — reproducibility + soak | versioned artefacts, randomized regression and failure records | not started |
 
 ## Phase 1 results
 
@@ -44,7 +59,7 @@ Nav2 tracks the clean road at 0.088 m RMS against the follower's 0.0645 m —
 1.37× the baseline, inside the 2× bar. That is the number the ADR-0004
 decision record should quote: the migration costs about a third more
 cross-track error on the easy case, in exchange for the capabilities in the
-plan's [Why migrate](./plan.md#why-migrate) table.
+revised plan's [reassessment](./plan.md#reassessment).
 
 ## Findings
 
@@ -239,13 +254,31 @@ currently in the comment is not correct.
 
 ## Open risks
 
-Ranked. Risks 2–4 below were open before Phase 1 ran; what the runs settled is
-noted against each.
+The hardware/perception replanning adds these current risks; the historical
+navigation findings below still apply unless explicitly superseded:
 
-1. **MPPI CPU on the RK3588.** Still measured nowhere. Phase 3 exists for
-   this; `FollowPathRPP` is already configured so the fallback is a one-line
-   change to `bt/patrol.xml`. Note the dev box held `controller_frequency`
-   without complaint, which says nothing about the RK3588.
+- **Monocular depth/terrain validity:** metric accuracy, hazardous-ground
+  false-free errors, calibration and observation freshness are unmeasured.
+  Segmentation is not proof of traversability; a 2D scan cannot validate
+  drop-offs. Camera evidence cannot expand approved drivable areas.
+- **Yield feasibility:** detection range and worst-case time to reach a bay
+  must fit the admitted traffic speed and visibility. Stopping in the lane
+  does not satisfy the pull-over requirement.
+- **Package compatibility and integration gaps:** pin JetPack/ROS/inference
+  versions for the actual Orin Nano. Current NVIDIA documentation lists
+  Isaac ROS 4.6 / JetPack 7.2 / Jazzy as a candidate family; no target build
+  has been tested. The revised plan links segmentation, metric-depth and
+  semantic-costmap candidates to evaluate before writing adapters. These
+  packages do not establish terrain accuracy or implement bay policy.
+- **Safety coverage:** the existing brake is forward-only. Reverse/spin and
+  stale perception need explicit validation; Collision Monitor moves into
+  Phase 2 rather than waiting for camera deployment.
+
+1. **Full-stack compute on the Jetson.** Replaces the RK3588 budget gate.
+   MPPI plus concurrent camera inference has not been measured on target.
+   TOPS does not establish control-loop or sensor-to-command latency.
+   `FollowPathRPP` is configured but would need new avoidance validation;
+   changing its selection alone does not establish equivalent behavior.
 2. **`longest_stop_s` at the end of a run.** ~~Predicted ~1.5 s against a 3 s
    limit.~~ Measured 1.68 s in R3-N and 1.54 s in R5-N, so the prediction was
    right and the margin is real but not large. Phase 1 adds one mid-lap chunk
@@ -265,8 +298,9 @@ noted against each.
    the one to carry into the field. 2.0 m is derived from
    `corner_radius_m: 5.0` (finding 7). A real site with tighter corners needs
    a smaller value, and nothing in the code checks this: the failure mode is a
-   quiet 2 m corner-cut, not an error. Phase 2's keepout mask turns it into a
-   hard constraint, which is the proper fix.
+   quiet 2 m corner-cut, not an error. Phase 2 must validate keepout margins
+   and full-footprint containment independently rather than assuming that
+   installing the filter alone establishes a hard physical boundary.
 6. **The Phase 0 baseline may be partly the teach driver.** Finding 9: the
    teach pass's 1.5 m lookahead predicts a 0.056 m corner cut on the 100 m
    road, against a baseline R3 RMS of 0.0645 m. If a re-teach at
@@ -362,5 +396,17 @@ noted against each.
   the USB adapter enumerates and the driver warns then continues, so it reads
   as a driver bug rather than a power fault.
 
-  Next, unchanged: Phase 0's GNSS soak and `yaw_offset` field gates, then the
-  driveway run, then Phase 2.
+  Next at the time: Phase 0's GNSS soak and `yaw_offset` field gates, then the
+  driveway run, then Phase 2. Superseded by the replanning entry below.
+- **2026-09-09, simulation-first replanning** — Operator reports the onboard PC
+  is removed. New target: Orin Nano (advertised 67 TOPS), one RGB camera with
+  learned monocular depth/terrain segmentation, dual-antenna GNSS, 2D lidar,
+  retained IMU. Operator requires predefined traffic pull-over spots and
+  prefers proven community packages over new custom code.
+
+  Revised [plan.md](./plan.md): preserve Phase 0/1 evidence; validate bounded
+  static detours and the stop chain first; then bay policy with oracle events;
+  then actual RGB perception and camera-triggered yielding. Camera predictions
+  do not authorize arbitrary off-route terrain. Target benchmarks and field
+  prerequisites are deferred, not passed. No runtime code changed and no new
+  simulation or hardware results were produced by this planning revision.

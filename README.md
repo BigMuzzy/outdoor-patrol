@@ -4,6 +4,9 @@ This template will get you set up using ROS2 with VSCode as your IDE.
 
 See [how I develop with vscode and ros2](https://www.allisonthackston.com/articles/vscode_docker_ros2.html) for a more in-depth look on how to use this workspace.
 
+For the robot's implemented node network, topic/action interfaces, TF tree and
+hardware/simulation profiles, see [Current ROS configuration](doc/eng/ros-configuration.md).
+
 ## Features
 
 ### Style

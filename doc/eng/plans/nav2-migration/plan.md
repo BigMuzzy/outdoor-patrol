@@ -1,284 +1,357 @@
-# Implementation plan — migrate patrol navigation to Nav2
+# Implementation plan - Nav2 patrol, simulation first
 
-> Imported unchanged except for these link paths and this note. Progress,
-> per-phase implementation plans and validation instructions live beside it:
-> [progress.md](./progress.md).
+**Revised:** 2026-09-09 UTC. Replaces the unimplemented phases of the
+2026-09-05 RK3588 migration plan. Phases 0 and 1 and their recorded results
+remain historical evidence, not claims about the new hardware.
+See [progress.md](./progress.md) and [RESUME.md](./RESUME.md).
 
-- **Supersedes:** the custom `route_follower` in
-  [`outdoor_patrol_route`](../../../../src/outdoor_patrol_route) as the thing
-  that drives the robot. The recorder, the route file, the localization stack,
-  the safety brake and the sim harness all stay.
-- **Status:** proposed. Phases are ordered so that each one ends with a
-  scored sim run and a field gate before the next starts.
-- **Date:** 2026-09-05
-- **Decision record:** to be written as
-  `doc/eng/decisions/0004-nav2-vs-custom-route-follower.md` once Phase 1
-  parity numbers exist (see [Why migrate](#why-migrate)).
+## Mission and confirmed decisions
 
-## Why migrate
+An outdoor, open-sky robot follows a predefined route, detours around
+obstacles inside approved drivable areas, and **pulls into predefined safe
+spots to let approaching low-speed traffic pass**, then resumes its route.
+Stopping in the traffic lane is not a successful yield.
 
-The custom follower is validated
-([issue-8-teach-and-repeat.md](../issue-8-teach-and-repeat.md)) and does lane
-changes around partial obstacles. What it cannot do, and what the patrol
-mission now needs:
+The intended hardware is:
 
-| Need | Custom follower | Nav2 |
-|---|---|---|
-| Go around partial obstacles inside the corridor | yes, fixed-side lateral offset | MPPI deviates freely inside a keepout mask |
-| Retreat to a **named safe spot** on a full block | no — `blocked` means stop in place | `NavigateToPose` + a recovery branch in the BT |
-| Safe spots **off** the corridor (pull-out, driveway) | not expressible: `(s, d)` only | any `map` pose inside the mask |
-| Reverse motion | none | Hybrid-A* + MPPI both plan reverse |
-| Moving obstacles | none | obstacle layer clearing + a BT condition to preempt |
-| Rotate-in-place, spiral-out avoidance, recoveries | none | stock behaviours |
+- NVIDIA Jetson Orin Nano, advertised at up to 67 TOPS; exact module,
+  memory, carrier, power mode and cooling still need confirming.
+- One RGB camera with **learned monocular depth**, not stereo or an RGB-D
+  sensor; terrain perception needs spatial segmentation, not just an
+  image-wide "grass/road" label.
+- Dual-antenna GNSS receiver and 2D lidar.
+- The existing IMU is retained. Existing wheel odometry, motor control,
+  firmware limits, watchdog and operator stop remain part of the architecture.
 
-The cost is real: costmaps, a behaviour tree, ~40 parameters that interact,
-and a controller that needs 20+ Hz of CPU on the RK3588. Phase 1 exists to
-measure that cost against the follower's numbers before anything new is built
-on top.
+The onboard PC is removed, so field work is deferred. Simulation development
+does not wait for it. Before hardware driving resumes, the original GNSS soak
+and heading checks, new camera calibration, braking tests and target-compute
+gates must pass; simulation cannot waive them.
 
-**Two design rules carry over unchanged.** Every criterion is scored against
-Gazebo ground truth or the world's own geometry, never against Nav2's opinion
-of where it is. And nothing is raised to make a run pass:
-`corridor_half_width_m`, `sigma_stop_m` and the firmware speed clamps are
-walls, not knobs.
+**Prefer maintained community packages and ROS standards over custom code.**
+Do not build a new controller, planner, EKF, depth network, object tracker,
+3D mapper or dashboard. First try upstream packages through configuration.
+Small integration code is acceptable only for a demonstrated gap, with an
+explicit interface and tests. "No custom code" is not an honest promise for
+the complete camera-to-terrain-to-yield mission.
 
-## What stays, what changes
+## Reassessment
 
+**Keep Nav2.** Phase 1 measured R3-N at 0.0883 m RMS against a frozen
+0.0645 m follower baseline, within the 0.129 m parity bar; R5-N passed.
+There is no evidence that replacing navigation again would help.
+
+Change the unfinished plan in these ways:
+
+| Old assumption | Revised decision |
+|---|---|
+| Every new phase waits for an outdoor gate | Separate simulation acceptance from deferred hardware/field acceptance. |
+| RK3588 CPU phase decides the architecture | Keep CPU Nav2; benchmark the complete CPU/GPU stack on the actual Jetson later. TOPS is not a Nav2 timing guarantee. |
+| Camera is a late vehicle-detection add-on | Define depth, terrain and traffic interfaces early; introduce real models after deterministic navigation/yield tests. |
+| Custom `scan_tracker` and several custom BT nodes | Start with stock Nav2 actions/BT nodes and conservative traffic-presence events; audit upstream integrations before adding only necessary mission glue. |
+| Nearest spot behind the robot, reverse allowed | Select a permitted, reachable bay by route connectivity, visibility and time available; do not reverse blindly. |
+| Automatically cut a connector to an off-route spot | Survey/author the bay and its access area explicitly. A geometric connector is not proof that ground is drivable. |
+| Obstacle clearing implies moving-traffic handling | A costmap is not a predictor. Early yielding, occupancy of the passing area and safe re-entry are mission requirements. |
+| Add Collision Monitor after vehicle detection | Validate it before detours and bay maneuvers; keep the existing brake until equivalence is demonstrated. |
+| Camera promises 50-100 m detection | No range promise before camera/model measurements. Visibility, bay spacing and allowed traffic speed must agree. |
+| Remove the follower after the compute phase | Keep it as a regression/reference option until replacement field validation is complete. |
+
+## Architecture and reuse boundary
+
+```text
+GNSS + dual-antenna heading + IMU + wheel odometry
+    -> robot_localization / navsat_transform -> map / odom / base_link
+
+recorded route + approved corridor/bay maps
+    -> existing patrol_mission -> stock Nav2 navigation actions
+    -> planner + controller + velocity smoother
+    -> validated safety chain -> firmware watchdog / motor controller
+
+2D lidar --------------------> obstacle costmaps + independent stop path
+RGB -> existing depth model --> qualified depth geometry --+
+RGB -> existing segmentation -> terrain evidence ---------+-> local constraints
+RGB -> existing detections --> conservative traffic events -> mission yield policy
 ```
-  KEEP    /odometry/global  ◄── dual EKF + navsat_transform + confidence_gate
-  KEEP    route.yaml        ◄── route_recorder (geodetic, base_link, datum)
-  NEW     route_to_map      ──► corridor keepout mask + speed mask (+ safe-spot islands)
-  NEW     patrol_mission    ──► NavigateThroughPoses goals from the route, status JSON
-  NEW     outdoor_patrol_nav──► nav2 params, launch, BT XML, custom BT nodes
-  KEEP    scan_safety       ◄── still between /cmd_vel_raw and /cmd_vel (ADR-013)
-  RETIRE  route_follower    ──► behind a launch flag until Phase 3 field gate, then removed
+
+GNSS supplies localization, **not a traversability map**. Keep a separation
+between the recorded route (preferred progress), approved areas (where the
+robot is permitted to go), observed obstacles and terrain evidence.
+
+### Package choices
+
+| Function | Starting choice | Boundary |
+|---|---|---|
+| Localization | `robot_localization`, `navsat_transform_node`, existing GNSS/IMU drivers | Retain quality/freshness gates; dual GNSS heading does not replace gravity/tilt measurements. |
+| Navigation | Existing Nav2, Smac Hybrid-A*, MPPI, stock navigation actions and BT nodes | Keep the scored configuration initially; RPP remains an unproven fallback, not an automatic performance-equivalent switch. |
+| Map constraints | Nav2 map server, keepout and speed filters | Use standard masks; author maps first. Add a small offline route-to-mask converter only if needed, not a new mapping stack. |
+| Lidar/depth obstacles | Nav2 obstacle/voxel layers; standard image/point-cloud processing | Depth must have calibrated units, camera geometry and valid timestamps before becoming metric obstacles. Ground filtering is required. |
+| Independent reactive stop | Nav2 Collision Monitor plus retained `scan_safety` during validation | Neither is a certified safety system. Validate timeout, reverse and turning coverage before enabling maneuvers. |
+| Learned perception | Existing pretrained depth, segmentation and detection models; supported ROS inference wrappers | Model/runtime selection is a compatibility and accuracy gate, not a commitment to train custom networks. |
+| Yield sequencing | Existing `patrol_mission` using stock `NavigateToPose` / `NavigateThroughPoses` | Bay policy, traffic event adapter and rejoin bookkeeping are the likely small custom boundary. No new navigation action implementation. |
+| Inspection and recording | RViz, diagnostics, rosbag2, existing scoring harness | No custom UI. Keep ground truth out of runtime navigation. |
+
+Use REP-103/105 frames, calibrated `sensor_msgs/Image` and `CameraInfo`,
+`PointCloud2` for qualified geometry, `nav_msgs/OccupancyGrid` for maps and
+`vision_msgs` detections where the chosen packages support them. Record
+sensor time, frames, validity and source; do not disguise uncalibrated depth
+or a 2D bounding box as a reliable 3D position.
+Depth projection also needs calibrated gravity/tilt information; a planar
+navigation pose must not be mistaken for measured camera roll and pitch.
+
+The current 100 m configuration uses `REEDS_SHEPP`, 2 m stations and chunked
+goals, not the original plan's invalid `DIFF` setting or 10 m stations.
+Its 1.5 m planner turning radius is a tuning choice, not a chassis minimum.
+See progress findings 4, 6, 7 and 10. Do not change these settings merely
+because the computer changes.
+
+### Camera and terrain policy
+
+Learned monocular depth is an estimate. Even a model trained for metric depth
+can have scale bias, unstable edges and out-of-domain errors. Benchmark it on
+the actual camera and surfaces. A lidar scan can cross-check visible surfaces
+at its scan plane; it cannot validate the whole image, low obstacles,
+overhangs, slopes or drop-offs.
+
+Initially, camera evidence may **restrict** or slow travel within approved
+areas; it must not open a previously forbidden shoulder. A "grass" label
+does not prove load-bearing ground, and missing/invalid depth is not free
+space. Combine semantic evidence with geometry, visibility and uncertainty.
+Positive lidar obstacles and fixed keepouts must not be erased by a camera
+prediction or costmap-clearing recovery.
+
+Nav2 can plan through an approved, not-yet-observed part of a route, but
+execution must remain inside the currently verified stopping envelope.
+Occluded or expired terrain evidence cannot authorize a new detour.
+Do not silently treat camera failure as a lidar-only continuation in a
+segment whose terrain/traffic safety depends on the camera.
+
+A semantic image-to-ground constraint integration is not provided merely by
+installing a segmentation network. Verify a maintained, compatible adapter;
+otherwise keep semantic output advisory and explicitly defer camera-driven
+terrain decisions, or approve a narrowly scoped adapter. Do not describe
+this integration as finished by pointing at a colored RViz image.
+
+**Concrete reuse shortlist, not yet selected or tested in this repository:**
+
+| Candidate | What it avoids writing | Qualification still needed |
+|---|---|---|
+| [Isaac ROS Image Segmentation / Segformer](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_segmentation) | GPU inference and ROS segmentation plumbing | Suitable terrain classes/weights, model license, latency and accuracy on the selected camera. |
+| [Depth Anything V2 outdoor metric models](https://github.com/DepthAnything/Depth-Anything-V2/tree/main/metric_depth) | Training a monocular depth network from scratch | Metric checkpoint rather than relative depth; compatible inference wrapper/export, license, memory, field error and temporal stability. An outdoor training set is not validation on this route. |
+| [kiwicampus semantic_segmentation_layer](https://github.com/kiwicampus/semantic_segmentation_layer) | A new semantic Nav2 costmap plugin | Its documented input is a segmentation mask plus an aligned per-pixel XYZ point cloud, originally for RGB-D sensors. Test the chosen ROS release, cost-combination/decay behavior and learned-depth input; it is not Nav2 core or a certified terrain validator. |
+| ROS `depth_image_proc` | A bespoke calibrated depth-to-point-cloud projection | Valid metric depth encoding, matching intrinsics/resolution and alignment with the segmentation image; this does not ground-filter or validate the depth model. |
+
+Evaluate this composition before designing a new semantic layer or projection
+node. Package availability is evidence of reusable building blocks, not proof
+of a turnkey, qualified outdoor monocular navigation system.
+
+### Pull-over policy
+
+Predefine each bay's usable polygon, approved access area, entry/wait/rejoin
+poses, applicable route segments, permitted approach direction and visibility
+requirements. A point and a fixed-radius island are insufficient.
+
+Use stock navigation goals to enter and leave a bay. One mission owner
+arbitrates actions: cancel/acknowledge the patrol goal, enter the bay, wait
+for positive evidence of clearance, rejoin and continue from recorded route
+progress. Repeated detections must not restart an in-progress yield.
+Localization failure, blocked access and missing required observations lead
+to an explicit stopped/fault state, not a successful mission result.
+
+For the first traffic policy, conservatively yield to relevant traffic
+presence using a declared maximum approach speed. Reliable velocity/TTC
+estimation is not required to build a new tracker first. This trades some
+false yields for less custom code; it does **not** remove the need to measure
+detection range, latency and the complete time to reach a bay.
+
+For every shared segment, check a conservative feasibility bound:
+
+```text
+T_available = (verified_detection_distance - separation_margin)
+              / (robot_max_speed + traffic_max_speed)
+T_required  = sensing_and_decision_latency + bounded_time_to_bay + time_margin
+
+require T_available > T_required
 ```
 
-`route_to_map` is the occupancy grid that issue #8 review question 4
-deferred. It is no longer optional: the corridor is enforced by a
-`KeepoutFilter` in both costmaps, so every planner and controller is
-physically constrained to the road width without controller-specific logic.
+This is an admission check, not a trajectory predictor: the swept access path
+must also clear the traffic path before arrival. If the bound or visibility
+does not hold, shorten bay spacing, lower the admitted speed, change the
+route or improve sensing. More TOPS cannot fix a hidden bend or an
+unreachable bay. A late-detection stop is a mitigation, not a passing yield.
 
-### Nav2 component choices
+Start with forward-access bays. Reverse or spin requires separately validated
+swept-footprint coverage and approved terrain; a forward camera and a
+forward-only brake do not provide that. No automatic "nearest bay behind me"
+rule. A free geometric path is not proof that oncoming traffic has passed;
+occlusion, detector loss and a timeout alone must not authorize re-entry.
 
-| Component | Choice | Why |
-|---|---|---|
-| Global costmap | rolling window, no static layer, obstacle layer from `/scan`, keepout filter | there is no occupancy map of the site; GNSS is the map |
-| Local costmap | 6 × 6 m rolling, obstacle layer, inflation, keepout filter | inflation radius sized to `clearance_half_width_m` (0.55) |
-| Planner | Smac Hybrid-A*, `DIFF` model, `minimum_turning_radius: 1.5` | matches the 1.5 m chassis minimum in issue #8; reverse allowed |
-| Controller | MPPI, `DiffDrive` model, 20 Hz; RPP registered as `FollowPathRPP` fallback | MPPI is the reason to migrate; RPP is the exit if RK3588 cannot hold 20 Hz |
-| Goal source | `NavigateThroughPoses` over stations subsampled every 10 m | dense enough that Hybrid-A* returns the centerline on a clear lane |
-| Velocity smoother | `max_velocity: [1.0, 0, 0.67]` | mirrors `chassis.yaml` / firmware clamps |
-| Safety | `scan_safety` kept; Nav2 `collision_monitor` added in Phase 6, not before | independent layer beneath Nav2 exactly as it sits beneath the follower today |
+## Revised phases
 
-### Status topic and scoring
+Phases below replace the old numbering from Phase 2 onward. A simulation pass
+permits further simulation work, not deployment. Keep hardware gates marked
+**deferred**, not passed. Detailed Phase 0/1 documents remain historical.
 
-`patrol_mission` publishes `/patrol_mission/status` as JSON with the same
-fields the harness already parses from `/route_follower/status` — `state`,
-`station`, `cross_track`, `offset`, `speed`, `sigma_h` — computed from
-`/odometry/global` against the loaded centerline, plus `bt_state`,
-`safe_spot` and `retreat_attempt`. `score_run.py` gains a `--status-topic`
-flag and nothing else, so R3/R4 stay comparable across the migration.
+### Phase 0/1 - preserve the baseline and measured Nav2 parity
 
----
+Done in simulation; deployed once to RK3588, never driven outdoors.
+Preserve the frozen runs and thresholds. Finding 9's teach-driver bias merits
+a separately labeled baseline experiment, not overwriting the reference.
 
-## Phases
+### Phase 2 - bounded static detours and the stop chain
 
-### Phase 0 — Freeze the baseline (sim + field prerequisites)
+1. Rewrite/add the Nav2 R4 scorer first (progress finding 2). Use world
+   geometry and the full footprint, not commanded `d_cmd`, for clearance and
+   lateral excursion. Preserve existing follower scoring.
+2. Author a small corridor/bay mask fixture with Nav2 map server and filters.
+   Verify datum alignment, bounds, resolution, full-footprint exclusion and
+   keepout margins in both costmaps. A filter alone is not a physical fence.
+   Use existing world artefacts; build `route_to_map` only if manual standard
+   masks are insufficient for repeatable route conversion.
+3. Introduce Collision Monitor through one serial velocity path, downstream
+   of smoothing, with exactly one final `/cmd_vel` publisher. Retain the
+   existing brake and firmware contract until equivalence is tested; do not
+   create parallel stop publishers. Disable unvalidated spin/backup recoveries.
+   Configure required-source timeouts explicitly, including partial source
+   loss. Nav2 documents stopping on stale source data; setting
+   `source_timeout: 0.0` disables that protection. Verify behavior on the
+   pinned Jazzy package rather than copying rolling defaults or assuming
+   another healthy sensor makes the missing one optional.
+4. Validate static detours and a full blockage with no available safe path.
 
-Sim: re-run `run_validation.sh teach r3 r4 r5` once on the current follower
-and commit the numbers to `runs/baseline/`. They are the parity bar for
-Phase 1, not the Results table in the issue-8 plan (that table is one lap
-each; take three).
+**Sim gates:** R3-N/R5-N remain passing. R4-N retains >0.15 m obstacle
+clearance, approved-corridor containment, return to |d| <0.2 m within 10 m,
+lap completion and longest stop <3 s on the existing partial-obstacle
+100 m world. Check full-body containment, not just the center. No
+retreat-side assertion. Full-block and traffic-yield scenarios have separate
+expected-wait criteria; a full block must stop safely.
+Inject stale scan, stale velocity, lifecycle restart and costmap-clearing
+events; measure command latency and actual stopping distance independently.
 
-Field: [`field-validation-alley.md`](../field-validation-alley.md) Phases 1
-and 2 only — GNSS soak and `yaw_offset`. Both are localization facts Nav2
-depends on and neither has a field result yet. Phases 3–6 of that plan are
-**not** required; they test the follower being replaced.
+Stopping envelopes must include `v * latency + v^2 / (2 * minimum_deceleration)`
+plus footprint/uncertainty margins. Simulator braking values are not yet
+measured hardware values.
 
-> Gate: three baseline runs archived; heading within 10° of true; soak
-> σ ≤ 0.05 m for 10 min.
+### Phase 3 - predefined bay maneuvers, without perception uncertainty
 
-### Phase 1 — Nav2 bring-up and clean-lap parity
+Add a small set of authored bays and connections. Audit stock BT/action
+composition first; extend the existing mission node only for the missing
+bay-selection, preemption, wait and resume policy.
 
-Build:
+Drive the policy with explicitly labeled **oracle/test traffic events**.
+They test decision logic, not camera capability. Keep these producers
+sim-only and outside production launch paths.
 
-- `outdoor_patrol_nav` package: `nav2.launch.py` (planner, controller,
-  bt_navigator, behaviors, velocity_smoother, lifecycle manager),
-  `config/nav2_params.yaml`, `bt/patrol.xml` (stock
-  `NavigateThroughPoses` tree for now).
-- `patrol_mission` node: loads `route.yaml` through `fromLL` like the
-  follower does, subsamples stations, sends one `NavigateThroughPoses` goal
-  per lap, publishes status.
-- Sim: `sim.launch.py nav:=true` swaps the follower for the Nav2 stack.
-  `run_validation.sh` gains `NAV=1`.
+**Sim gates:** enter the correct permitted bay before a scripted actor reaches
+the conflict area; remain wholly clear while it passes; rejoin without
+contact or losing route progress. Test both travel directions, occupied bay,
+blocked access, repeated events, second arriving actor, loss of localization,
+late detection, occlusion while waiting and no reachable bay.
+Where yielding is impossible, report infeasibility/fault; do not count a
+stop in the lane as success. Reverse is outside the initial gate.
 
-Controller starts as MPPI. If R3-N cannot hold `controller_frequency` on the
-dev box, that is a sim-host problem; the RK3588 question is Phase 3.
+Use dynamic objects with sensor-visible and collision geometry. A visual-only
+Gazebo actor is not enough to validate lidar/depth sensing or contact.
 
-> **R3-N pass:** same criteria as R3 — RMS cross-track < 0.25 m, peak
-> < 0.5 m, one lap, longest stop < 3 s — **and** within 2× of the frozen
-> baseline RMS (0.064 m). If Nav2 tracks a clear road at 0.20 m RMS it
-> passes the letter of R3 and fails the point of migrating.
->
-> **R5-N pass:** `patrol_mission` reads raw `/um982_driver/fix` through
-> `route_file.horizontal_sigma()` and cancels the goal above `sigma_stop_m`;
-> ≥ 20 sustained degraded cycles, zero commanded speed. Nav2 does not know
-> about GNSS quality; this stays a mission-level rule.
+### Phase 4 - monocular camera and terrain/perception integration
 
-Field: none. This phase does not touch the robot.
+Before adopting a model, select/pin a supported combination of Jetson module,
+JetPack, ROS distribution, inference runtime, model license and wrapper.
+Keep the existing Jazzy/Harmonic simulation baseline while investigating
+compatibility; do not silently port the workspace or assume an arbitrary
+Isaac ROS release supports Orin Nano and this camera pipeline.
 
-### Phase 2 — Corridor mask and partial obstacles
+**Compatibility check, 2026-09-09:** NVIDIA's
+[Isaac ROS 4.6.0 release notes](https://nvidia-isaac-ros.github.io/releases/index.html#isaac-ros-4-6-0-august-18-2026)
+add Jetson Orin and JetPack 7.2 support; the current
+[setup requirements](https://nvidia-isaac-ros.github.io/getting_started/index.html#system-requirements)
+specify JetPack 7.2 for Jetson and ROS 2 Jazzy. The segmentation repository's
+performance table includes Orin Nano Super 8GB. Evaluate this version family
+first, checking the exact board and each selected package. Older
+JetPack 6 / Isaac ROS 3.x instructions are not grounds to downgrade the
+working Jazzy baseline. This is documentation evidence, not a target build
+or performance result.
 
-Build:
+Add calibrated RGB simulation. Keep ideal depth and semantic labels on
+separate oracle/scoring topics. The production-like branch must run the
+actual selected models on RGB, without receiving perfect simulated depth.
+Add delay, dropout, depth-scale bias, invalid edges, lighting/texture changes,
+camera pitch/roll and occlusion cases. Compare geometry-only, advisory
+semantics and qualified semantic constraints separately.
 
-- `route_to_map`: centerline ± `corridor_half_width_m` → PGM/YAML keepout
-  mask at 0.05 m; lane ± `lane_half_width_m` → speed mask. Emits `map`-frame
-  files from the route datum so they overlay the sim world exactly (Phase 0
-  proved the pinned datum lands within 18 mm). `--check` mode like
-  `gen_patrol_road.py`.
-- `KeepoutFilter` + `SpeedFilter` in both costmaps.
-- MPPI critic weights tuned so it uses the shoulder: `PathAlignCritic` and
-  `PathFollowCritic` low enough to leave the lane, `CostCritic` /
-  `ObstaclesCritic` high. Record the final weights with the R4-N numbers,
-  because they are the migration's real tuning artefact.
+**Sim gates:** verify topic/frame/time contracts, bounded stale-data response,
+no expansion of permitted areas, and no false-free clearing of known hazards.
+Measure depth error versus distance, hazardous-ground false-free rate,
+traffic recall/false yields and sensor-to-command latency. Freeze scenario
+thresholds before tuning. Perfect sensors test integration; model runs on
+rendered images test that synthetic domain only, not outdoor accuracy.
 
-> **R4-N pass:** body clearance > 0.15 m at every barrier; `|d| ≤ 3.0 m`
-> (never outside the mask — checked against ground truth, not the costmap);
-> back to `|d| < 0.2 m` within 10 m of clearing; lap completes; longest stop
-> < 3 s. Retreat side is **not** asserted — MPPI picks it — but the
-> obstacle world makes a left pass geometrically impossible, so a clearance
-> pass implies a right pass.
->
-> **R4-N corner:** report settled cross-track through barrier 3 separately.
-> The follower's known weak spot was 0.33–0.90 m here; Nav2 should be
-> better. If it is not, that is a finding, not a fail.
+Do not make nvblox, visual SLAM or a new 3D terrain mapper prerequisites for
+the first bounded detours. Evaluate additional mapping only if it solves a
+measured need and accepts the qualified depth/pose inputs on supported hardware.
 
-Field: **alley Phases 5 and 6 with the Nav2 stack**, `route_alley.yaml`
-corridor 1.8 m, 2.4 m soft obstacle against the left wall. Same gates:
-never touches, back to lane within 10 m, never stationary > 3 s.
+### Phase 5 - camera-triggered yielding and fault/coverage sweeps
 
-> Gate: sim R4-N and alley Phase 6 both pass on the same commit.
+Replace oracle traffic events with events from the selected perception
+pipeline. Reuse Phase 3's mission policy; no second traffic navigation stack.
+Keep lidar stopping independent of successful classification.
 
-### Phase 3 — Compute budget on the RK3588
+**Sim gates:** reproduce Phase 3 with actual model inputs; sweep arrival
+times, speeds, camera visibility, bay spacing and compute latency. Verify
+the feasibility bound and full-footprint separation against ground truth.
+Include parked traffic, pedestrians/cyclists, crossing/approaching actors,
+blocked bays, sensor disagreement and missed detections. Score expected
+yield waits separately from unexplained stalls, using scenario truth rather
+than trusting a self-reported waiting state.
 
-Not a feature phase; a go/no-go for MPPI. The `deploy/Dockerfile` image
-gains `ros-jazzy-nav2-*`; the compose file gets a `nav` profile.
+Maximum admitted traffic speed, minimum detection range, bay geometry,
+clearance and resume timing must be explicit scenario parameters. "Low speed"
+is not a numeric requirement; stress-test speeds are not supported-operation
+claims. Never relax collision/keepout gates to improve completion rate.
 
-Measure on the robot, stack fully up, during an alley lap:
-`controller_server` achieved rate, per-core load, `/cmd_vel` jitter.
+### Phase 6 - Jetson integration and field qualification (deferred)
 
-> Pass: `controller_frequency` ≥ 20 Hz achieved ≥ 95 % of cycles, total
-> load leaves ≥ 1 core free for the perception added in Phase 5.
->
-> Fail: switch `FollowPath` to the registered RPP config, drop the global
-> planner rate to 1 Hz replanning inside the mask so the *planner* does the
-> going-around, re-run R4-N and alley Phase 6. That configuration is then the
-> shipping one, and MPPI waits for the Orange Pi 5 Ultra.
+On the actual Jetson, measure the complete pipeline, not isolated model FPS:
+Nav2 cycle deadlines, capture-to-constraint age, safety response, CPU/GPU
+load, memory pressure, power and thermal throttling under sustained use.
+Stock MPPI is not accelerated merely by having a CUDA GPU. Keep its 20 Hz
+target, record deadline misses and latency tails, and qualify worst-case
+stopping/yield envelopes under perception load. Revalidate RPP if used.
 
-This is also the point the follower is removed from `sim.launch.py` and
-`route_follow.launch.py` is deleted, with the ADR written from the Phase 1–3
-numbers.
+Then perform the original GNSS soak and yaw checks, sensor extrinsics/time
+calibration, actual braking and watchdog tests, and supervised closed-area
+static/bay/traffic tests. Re-measure camera depth and detection performance
+in the intended outdoor conditions. No assumption of public-road readiness.
 
-### Phase 4 — Safe spots and retreat on a static full block
+Operational limits still to freeze: actual camera/FOV and mounting, admitted
+robot/traffic speeds, daylight/weather range, allowable slopes/surfaces and
+bay spacing/visibility. Scope the first tests to surveyed, firm terrain;
+unknown ground, drop-offs and unrestricted road traffic are not validated.
 
-Build:
+### Phase 7 - reproducibility and soak
 
-- Route file version 2: `safe_spots: [{name, lat, lon, yaw, hold_s}]`.
-  Geodetic like the stations, projected through `fromLL` at load. Spots may
-  be off the corridor; `route_to_map` cuts an island for each into the
-  keepout mask (spot pose ± 1.0 m, plus a 1.5 m-wide connector to the nearest
-  corridor point, so Hybrid-A* can reach it).
-- Recorder: `/route_recorder/mark_safe_spot` Trigger service; press it
-  while parked at the spot during the teach pass.
-- Custom BT nodes in `outdoor_patrol_nav`:
-  - `NearestSafeSpot` — nearest by *route arc-length behind the robot*, not
-    Euclidean, so it never picks the one across the road.
-  - `WaitForCorridorClear` — calls `ComputePathToPose` to the next station
-    every 2 s; succeeds when a path exists.
-- `bt/patrol.xml`: `RecoveryNode` around the navigate subtree whose recovery
-  branch is `NearestSafeSpot → NavigateToPose(spot, reverse allowed) →
-  Wait(hold_s) → WaitForCorridorClear → NavigateThroughPoses(remaining)`.
-  Stock spin/backup/wait recoveries come **after** it, not before. Triggers:
-  `ComputePathToPose` failure inside the mask, or the progress checker
-  aborting. `max_retreat_attempts` then mission abort.
-- Sim: `gen_patrol_road.py --full-block` emits a barrier spanning the whole
-  corridor at s = 46 (mid-corner, the hard one) and two spots: an on-corridor
-  pull-out at s = 30, d = −2.4, and an **off-corridor** one at s = 20, 4 m
-  right of the centerline.
+Record versioned maps/models/configuration, random seeds, rosbag2 data and
+ground-truth scores. Soak with randomized blocks, actors and sensor faults.
+Archive oracle and learned-perception results separately. Write ADR-0004 from
+measured navigation parity with the teach-driver caveat; do not wait until
+hardening to record the architectural decision.
 
-> **R6 pass:** `bt_state` reaches `retreating` within 10 s of the block;
-> the chosen spot is the s = 30 one (nearer along the route); the robot
-> reaches it within 0.5 m, holds; the barrier is removed via
-> `gz service ... /world/patrol_road/remove` mid-run; `WaitForCorridorClear`
-> fires and the lap completes. Never contact, never outside the mask.
->
-> **R7 pass:** same, with the s = 30 spot removed from the file so the
-> off-corridor spot is chosen, proving the mask island and connector work.
-> Then a second barrier dropped **behind** the robot during retreat: no
-> contact, and either the next spot or a clean abort.
+## Immediate next deliverable
 
-Field: alley, second box closing the 1.6 m gap. Spot = the pull-out at the
-alley entrance. Gate: reverses to it, holds, resumes when the box is
-removed, `retreat_attempt` reads 1.
+**Implement only Phase 2 first:** Nav2-specific ground-truth obstacle scoring,
+a standard keepout/speed-mask fixture and the validated reactive stop path,
+then R4-N. No Jetson purchase, camera model, custom tracker or field test is
+needed for that work. Develop the Phase 4 package/version shortlist in
+parallel without changing the working navigation baseline.
 
-### Phase 5 — Moving obstacles, LiDAR only
+Run simulation on an explicit isolated ROS domain (42 was used), preserve
+the stale-node check and use only one Gazebo server. If running multiple
+worlds later, isolate Gazebo transport as well as ROS.
 
-Build:
+## Upstream references
 
-- `scan_tracker` in `outdoor_patrol_safety`: cluster `/scan`, Kalman-track
-  centroids in `map`, publish tracks with velocity. The RPLIDAR C1's ~12 m
-  range gives ~1.5 s of lead at 30 km/h, which is the number this phase
-  will confirm or refute.
-- BT condition `TrafficApproaching`: a track closing along the corridor
-  with `time_to_contact < retreat_time_needed`, measured in Phase 4 as the
-  time from trigger to arrival at the spot. Preempts the navigate subtree
-  and enters the Phase 4 retreat branch early.
-- Obstacle layer `observation_persistence` and raytrace clearing tuned so a
-  passed mover does not leave a ghost the planner treats as a block.
-
-> **R8 pass:** Gazebo actor driving the centerline toward the robot at 2,
-> 4 and 8 m/s. At 2 and 4 m/s the robot is at a spot before the actor
-> reaches its position. 8 m/s is **reported**: the expectation is that it
-> fails on lidar range alone, and the margin by which it fails sizes the
-> camera requirement in Phase 6.
-
-Field: person jogging toward the robot, then a bicycle. No cars.
-
-### Phase 6 — Camera vehicle detection
-
-The RKNN YOLO pipeline on the Orange Pi publishes detections into the same
-track topic as `scan_tracker`, so nothing above it changes. Range 50–100 m on
-a car, 6–12 s of lead. Nav2 `collision_monitor` is added here as a second
-brake now that there are two obstacle sources.
-
-> Field: own car on the closed road at 10 km/h, then 20. Escalate only after
-> false-positive rate on parked cars over five laps is measured and below
-> one spurious retreat per lap.
-
-### Phase 7 — Hardening
-
-Rosbag on every retreat (`deploy/data/events/`), soak N laps in sim with
-randomized block and spot placement, a wiki page for the first field retreat
-that goes wrong, and the ADR.
-
----
-
-## Risks carried into this plan
-
-- **MPPI on the RK3588.** Phase 3 exists because of it. The RPP fallback is
-  designed in from Phase 1 so the answer is a config change, not a rewrite.
-- **Costmap ghosts from a low lidar.** The C1 sits 0.20 m above ground. Long
-  grass and kerbs will enter the obstacle layer where the follower's sector
-  check ignored them. Expect Phase 2 field tuning of `obstacle_max_range`,
-  `min_obstacle_height` and raytrace clearing.
-- **Keepout mask vs. real road edge.** The mask is only as good as the
-  teach-pass centerline plus a global half-width. The multi-pass shoulder
-  measurement from issue #8 review question 2 becomes more important, not
-  less, because Nav2 will actually drive to the mask edge.
-- **BT preemption while reversing.** A `TrafficApproaching` tick during a
-  Phase 4 retreat must not restart the retreat from scratch. R7's
-  block-behind case is the sim proxy for this.
-- **Two obstacle sources disagreeing** in Phase 6. The track topic needs a
-  source field and the BT condition needs a rule for lidar-only vs
-  camera-only detections before the first car test.
+The package/version shortlist above links directly to upstream sources.
+For reactive stopping, see Nav2's
+[Collision Monitor documentation](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/collision_monitor/configuring_collision_monitor_node/):
+it explicitly distinguishes software collision monitoring from hard-real-time
+safety certification and documents source timeouts. That page tracks rolling;
+confirm parameters and features against the deployed Jazzy release before use.
