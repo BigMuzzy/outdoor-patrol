@@ -28,14 +28,51 @@ isolated from `agents/field-validation-dashboard-rviz`. The older
 `agents/read-nav2-migration-doc` was never pushed and does not exist on
 origin — do not go looking for it.
 
-> ⚠️ **You probably cannot commit from the devcontainer workspace.**
+> ⚠️ **Git does not work in the `read-nav2-migration-doc` devcontainer.**
 > `/workspaces/read-nav2-migration-doc` is a git *worktree* whose gitdir lives
-> on the host at `/home/max/projects/outdoor-patrol/.git/worktrees/...`, which
-> is not mounted into the container. `git status` there fails outright. The way
-> through is a plain clone somewhere writable (`git clone
-> git@github.com:BigMuzzy/outdoor-patrol.git`), work there, push, and copy
-> files back into the workspace for the user to read. SSH auth to GitHub does
-> work from inside the container.
+> on the host at `/home/max/projects/outdoor-patrol/.git/worktrees/...`. Only
+> the working tree is bind-mounted into the container, not that path, so git
+> cannot resolve its own metadata and `git status` fails outright. SSH auth to
+> GitHub *does* work from inside the container — it is only the local repo
+> that is unreachable. See [Opening it so git works](#opening-it-so-git-works).
+
+## Opening it so git works
+
+The branch is on origin, so the fix is to open a checkout whose `.git` is
+reachable from inside the container. Two ways, in order of preference.
+
+**1. Open the main repo instead of the worktree.** Its `.git` is a real
+directory inside the folder VS Code mounts, so git works with no
+configuration at all. On the **host**:
+
+```bash
+cd ~/projects/outdoor-patrol
+git fetch origin
+git switch agents/nav2-driveway-field-test
+code .
+```
+
+Then *Reopen in Container*. Cost: a fresh `build/`+`install/`, so budget
+~5 minutes for `./build.sh`. The worktree has served its purpose and can be
+retired with `git worktree remove read-nav2-migration-doc` once you are sure
+nothing local is left in it — as of 2026-09-09 its contents are byte-identical
+to the branch, so nothing would be lost.
+
+**2. Keep this folder and mount the gitdir.** Add to `mounts` in
+`.devcontainer/devcontainer.json`, then rebuild the container:
+
+```json
+"source=${localEnv:HOME}/projects/outdoor-patrol/.git,target=/home/max/projects/outdoor-patrol/.git,type=bind,consistency=cached"
+```
+
+The `target` must match the path in the `.git` file *literally* — git follows
+it as an absolute path. Keep this change **local and uncommitted**: the bind
+source has to exist on the host or the container will not start, so committing
+it would break the container for anyone whose clone is elsewhere.
+
+Either way, a fresh clone (`git clone
+git@github.com:BigMuzzy/outdoor-patrol.git`) anywhere writable also works and
+is what the deployment work was actually done from.
 
 ## To continue
 
