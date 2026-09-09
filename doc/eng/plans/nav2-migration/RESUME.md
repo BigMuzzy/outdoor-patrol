@@ -8,8 +8,9 @@ built, tested or scored" (2026-09-05) and then "done and passing in sim"
 ## Where the work stopped
 
 **Phases 0 and 1 are done, passing, and on the robot.** The stack has never
-driven outdoors — that is the next thing, and it is blocked on a hardware
-fault (see [To continue](#to-continue)).
+driven outdoors — that is the next thing, and nothing is blocking it. The one
+hardware fault that was (a dead IMU) turned out to be unpowered and is
+resolved.
 
 - Phase 0: 3/3 PASS, mean R3 RMS 0.0645 m, `NAV_MAX_RMS` = 0.129.
 - Phase 1: R3-N 0.0883 m RMS / 0.219 m peak / 0.988 laps / 1.68 s longest
@@ -38,33 +39,42 @@ origin — do not go looking for it.
 
 ## To continue
 
-Ranked. The first is a blocker, not a task.
+Ranked. Nothing here is blocked any more — the IMU was, and is not.
 
-1. **The IMU is dead and must be fixed before any field run.** `imu_driver`
-   logs `No response to command 0x12` three times, then continues anyway, and
-   `/imu/data` has **zero publishers**. The FTDI adapter enumerates, so the
-   port opens and the cable is intact; the sensor never answers. Untested
-   hypothesis: the Inertial Labs KERNEL shares a power rail with the
-   drivetrain, which was switched off for the whole deployment session.
-   **Check it with the drivetrain powered on** before assuming a driver bug.
-   Not optional — the global EKF fuses IMU orientation and `heading_to_imu`
-   feeds GNSS heading through the same path, so running without it is a
-   different test, not a smaller one.
-2. **Phase 0's two field prerequisites have still never been run**: the GNSS
+1. **Phase 0's two field prerequisites have still never been run**: the GNSS
    soak (σ ≤ 0.05 m for 10 min) and `yaw_offset` (heading within 10° of true),
    both in [field-validation-alley.md](../field-validation-alley.md) Phases 1
-   and 2. Nav2 depends on both more sharply than the follower did.
-3. **The driveway field test**, [field-test-driveway.md](./field-test-driveway.md).
+   and 2. Nav2 depends on both more sharply than the follower did, and
+   `yaw_offset` in particular needs the IMU that was dead until 2026-09-09.
+2. **The driveway field test**, [field-test-driveway.md](./field-test-driveway.md).
    Record a route with the `record` profile, then follow it with `nav2` +
-   `mission`. Everything is deployed and waiting.
-4. **Phase 2**, starting with `route_to_map`. Read finding 2 in
+   `mission`. Everything is deployed and waiting. Confirm `/imu/data` is
+   publishing first — see below.
+3. **Phase 2**, starting with `route_to_map`. Read finding 2 in
    [progress.md](./progress.md) first — the R4 scorer checks have to be
    rewritten before there can be an R4-N, and that is Phase 2's first
    deliverable, not an afterthought.
-5. **ADR-0004 can be written now**: parity is measured. Nav2 tracks the clean
+4. **ADR-0004 can be written now**: parity is measured. Nav2 tracks the clean
    road at 1.37× the follower's cross-track RMS (0.0883 vs 0.0645 m), inside
    the 2× bar. Before quoting 0.0645 as the follower's accuracy, read finding
    9 — a share of it may be the teach driver rather than the follower.
+
+### Resolved: the IMU was unpowered
+
+Kept because the signature is misleading. On 2026-09-06 `imu_driver` logged
+`No response to command 0x12` and `/imu/data` had zero publishers, while the
+FTDI adapter enumerated normally — which looks exactly like a driver or
+baud-rate bug, and the driver warns and then continues rather than failing.
+It was power: the Inertial Labs KERNEL shares a rail with the drivetrain,
+which was off. The operator confirmed on 2026-09-09 that the IMU works with
+power restored.
+
+Not re-verified from the dev box, because the robot was powered down again
+first. On the next power-up, before recording a route:
+
+```bash
+ros2 topic hz /imu/data     # expect ~100 Hz
+```
 
 ## The robot
 

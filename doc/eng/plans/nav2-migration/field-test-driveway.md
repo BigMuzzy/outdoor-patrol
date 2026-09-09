@@ -7,7 +7,9 @@ stock ROS tool: RViz with `rviz_default_plugins`, `rqt_robot_monitor`,
 **Status: deployed and brought up on the robot 2026-09-06; not yet driven.**
 The stack is on the Pi and every Nav2 server activates — see
 [Deployment result](#deployment-result). What has *not* happened is a route
-being recorded or followed on real ground.
+being recorded or followed on real ground. The one hardware fault that was
+blocking it (the IMU) turned out to be a power-rail issue and is resolved;
+see [Known state of the robot](#known-state-of-the-robot-2026-09-09).
 
 ## Before you go outside
 
@@ -77,19 +79,35 @@ The GNSS telemetry reads correctly on the real receiver:
 never given a goal, so it was not optimising; the idle figures say nothing
 about the Phase 3 question. Take that reading during the first followed lap.
 
-## Known state of the robot, 2026-09-06
+## Known state of the robot, 2026-09-09
 
 Read this before trusting the health screen.
 
-**The IMU is not responding.** `imu_driver` logs `No response to command 0x12`
-three times at start-up, then `Device identity/BIT query incomplete;
-continuing`, and `/imu/data` has **zero publishers**. The FTDI adapter
-enumerates (so the port opens) but the sensor never answers. The most likely
-cause is that the Inertial Labs KERNEL shares a power rail with the
-drivetrain, which was switched off — **check this first with the drivetrain
-powered on**, before assuming a driver or cable fault.
+**The IMU is fine — it was unpowered.** On 2026-09-06 `imu_driver` logged
+`No response to command 0x12` three times, then `Device identity/BIT query
+incomplete; continuing`, and `/imu/data` had **zero publishers**. The FTDI
+adapter enumerated, so the port opened and the cable was intact; the sensor
+simply never answered. The suspected cause was that the Inertial Labs KERNEL
+shares a power rail with the drivetrain, which was switched off for that
+whole session. **The operator confirmed on 2026-09-09 that IMU power was out
+and that the IMU works with it restored.**
 
-This matters for the field test: the global EKF fuses IMU orientation, and
+Keep the failure signature written down, because it is not obvious: an
+enumerated USB adapter and a silent sensor look identical to a driver or
+baud-rate bug, and the driver logs a warning and then continues rather than
+failing. If `/imu/data` is ever empty again, check power before touching
+`imu_driver.yaml`.
+
+Not yet re-verified from the dev box — the robot was powered down again
+before it could be. **On the next power-up, confirm before recording a
+route:**
+
+```bash
+ros2 topic hz /imu/data          # expect ~100 Hz, not silence
+# and in rqt_robot_monitor: Localization/IMU should be OK, not Error
+```
+
+This matters more than it looks: the global EKF fuses IMU orientation, and
 `heading_to_imu` feeds GNSS heading in through the same path. Running without
 it is not a smaller version of the test, it is a different one.
 
@@ -103,8 +121,10 @@ operator to ignore red, which defeats the window. EKF health is read off
 `/odometry/global` in RViz instead. If `ros2 topic hz` and the diagnostic
 ever agree, delete the discard.
 
-With those two accounted for, the screen is honest: at the time of writing it
-shows exactly one error (the IMU) and one warning (`RTK Float`), both real.
+With that accounted for and the IMU powered, the screen should show no
+errors. `RTK Float` is a legitimate warning: it means corrections are
+flowing but the fix has not reached RTK Fixed, which is worth waiting out
+before a run rather than ignoring.
 
 ## The four windows on the dev box
 

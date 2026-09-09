@@ -3,7 +3,7 @@
 Tracker for [plan.md](./plan.md). One row per phase; a phase is **done** only
 when its scored sim run passes and the numbers are pasted in below.
 
-**Last updated:** 2026-09-06
+**Last updated:** 2026-09-09
 
 ## Status
 
@@ -328,3 +328,39 @@ noted against each.
   is missing". The wrapper skips keys provided from `src/`.
 
   Next: Phase 2, starting with the R4 scorer rewrite in finding 2.
+- **2026-09-09** — Deployed to the robot on branch
+  `agents/nav2-driveway-field-test`, cut from `main` and isolated from
+  `agents/field-validation-dashboard-rviz`. Image `outdoor-patrol:nav2` with
+  `*-nav2` container names, so the dashboard branch's `outdoor-patrol:arm64`
+  is untouched and returns with a single `up -d`. **Every Nav2 server
+  configured and activated on the RK3588 first time**, which closes the
+  top-ranked risk in [RESUME.md](./RESUME.md) on hardware rather than only in
+  sim.
+
+  Added the field telemetry needed to run the test with stock tools and no
+  custom RViz panel: dual-antenna GNSS diagnostics in `um982_driver`
+  (`heading_quality`, `heading_deg`, `heading_published`, ANT1/ANT2 satellite
+  counts, recorded *before* the drop check so an unsolved baseline stays
+  visible), a `/diagnostics` task and Float64 mirrors in `patrol_mission`, and
+  the taught route as a latched `nav_msgs/Path`. R3-N re-scored at 0.087 m
+  after these changes — no regression.
+
+  Also built an 18 ft driveway world ([runs/driveway/](./runs/driveway/)) as a
+  second scale to test against, which is what surfaced finding 9.
+
+  Three things only a live bring-up could show, all recorded in
+  [field-test-driveway.md](./field-test-driveway.md): `rqt_robot_monitor`
+  reads `/diagnostics_agg` and nothing was aggregating, so it showed "No
+  messages received" while six nodes published happily; a fresh clone's empty
+  `deploy/data` meant no `ntrip.yaml` and the GNSS silently dropped to SPS;
+  and `robot_localization`'s frequency diagnostic reports 0 Hz against a topic
+  measurably running at 30 Hz, which made the health screen permanently red
+  until it was discarded.
+
+  The IMU was dead throughout and is now resolved: it was unpowered, sharing a
+  rail with the drivetrain. Worth remembering because the signature misleads —
+  the USB adapter enumerates and the driver warns then continues, so it reads
+  as a driver bug rather than a power fault.
+
+  Next, unchanged: Phase 0's GNSS soak and `yaw_offset` field gates, then the
+  driveway run, then Phase 2.
