@@ -1,14 +1,15 @@
 # Copyright 2026 Outdoor Patrol Team
 # SPDX-License-Identifier: Apache-2.0
-"""Interim GNSS global-localization bringup (ADR-012) — full stack, one launch.
+"""
+Interim GNSS global-localization bringup (ADR-012) — full stack, one launch.
 
 Composes everything needed to run the interim global localization on the real
 robot:
 
   teleop.launch.py              micro-ROS agent + robot_state_publisher
    [outdoor_patrol_bringup]     -> /odom, /cmd_vel, TF base_link<->gnss_link
-  gnss_rtk.launch.py            UM982 driver + NTRIP (RTK), lifecycle
-   [um982_driver]               auto-activated -> /um982_driver/fix, /heading
+  profiles/gnss_um982.launch.py UM982 driver + NTRIP (RTK), lifecycle
+   [outdoor_patrol_bringup]     auto-activated -> /um982_driver/fix, /heading
   global_localization.launch.py dual-EKF + heading adapter + confidence_gate +
    [outdoor_patrol_loc]         navsat_transform -> odom->base_link, map->odom
   rviz2 (optional)              fixed frame = map
@@ -20,31 +21,45 @@ Drive with the keyboard in a SEPARATE terminal (needs a real TTY):
 NTRIP credentials: pass `ntrip_params_file:=/path/to/ntrip.yaml`; the default
 points at the package example (no real caster).
 
-TBD before the field test (integration plan items 2/3): the heading
-`yaw_offset` (heading_to_imu) once the antenna-baseline mount angle is
-measured — until then the `map` orientation is unaligned. Datum is
-auto-on-first-fix (config/navsat.yaml), so start near the dock.
+Each sensor can select a different absolute *_launch_file path. The profile
+owns driver/protocol adaptation, not localization, TF or the lidar brake.
+Empty *_params_file and *_dev values retain the selected profile's defaults.
+Recheck mount and heading/brake calibration when replacing hardware.
 """
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     GroupAction,
     IncludeLaunchDescription,
+    OpaqueFunction,
     TimerAction,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    EnvironmentVariable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+
+
+def _include_profile(context):
+    role = LaunchConfiguration('sensor_role').perform(context)
+    path = Path(LaunchConfiguration('driver_launch_file').perform(context))
+    if not path.is_absolute():
+        raise ValueError(f'{role}_launch_file must be an absolute path: {path}')
+    if not path.is_file():
+        raise FileNotFoundError(f'{role} launch profile not found: {path}')
+    return [IncludeLaunchDescription(PythonLaunchDescriptionSource(str(path)))]
 
 
 def generate_launch_description() -> LaunchDescription:
     bringup = FindPackageShare('outdoor_patrol_bringup')
     loc = FindPackageShare('outdoor_patrol_loc')
-    um982 = FindPackageShare('um982_driver')
-    ntrip = FindPackageShare('ntrip_client')
-    imu_pkg = FindPackageShare('imu_driver')
     safety_pkg = FindPackageShare('outdoor_patrol_safety')
 
     serial_dev = LaunchConfiguration('serial_dev')
@@ -64,25 +79,44 @@ def generate_launch_description() -> LaunchDescription:
             'use_sim_time', default_value='false',
             description='Use simulation clock if true.'),
         DeclareLaunchArgument(
-            'gnss_dev', default_value='',
+            'gnss_dev',
+            default_value=EnvironmentVariable('GNSS_PORT', default_value=''),
             description='Override the GNSS serial port; empty keeps its YAML.'),
         DeclareLaunchArgument(
-            'imu_dev', default_value='',
+            'imu_dev',
+            default_value=EnvironmentVariable('IMU_PORT', default_value=''),
             description='Override the IMU serial port; empty keeps its YAML.'),
         DeclareLaunchArgument(
             'um982_params_file',
-            default_value=PathJoinSubstitution(
-                [um982, 'config', 'um982_rover.yaml']),
+            default_value=EnvironmentVariable('GNSS_PARAMS', default_value=''),
             description='Legacy alias for gnss_params_file.'),
         DeclareLaunchArgument(
             'gnss_params_file',
             default_value=LaunchConfiguration('um982_params_file'),
-            description='GNSS driver YAML; gnss_dev overrides its port.'),
+            description='GNSS driver YAML; empty uses the selected profile.'),
         DeclareLaunchArgument(
             'imu_params_file',
-            default_value=PathJoinSubstitution(
-                [imu_pkg, 'config', 'imu_driver.yaml']),
-            description='IMU driver YAML; imu_dev overrides its port.'),
+            default_value=EnvironmentVariable('IMU_PARAMS', default_value=''),
+            description='IMU driver YAML; empty uses the selected profile.'),
+        DeclareLaunchArgument(
+            'lidar_params_file',
+            default_value=EnvironmentVariable('LIDAR_PARAMS', default_value=''),
+            description='LiDAR driver YAML; empty uses the selected profile.'),
+        DeclareLaunchArgument(
+            'gnss_launch_file',
+            default_value=PathJoinSubstitution([
+                bringup, 'launch', 'profiles', 'gnss_um982.launch.py']),
+            description='Absolute GNSS profile launch path.'),
+        DeclareLaunchArgument(
+            'imu_launch_file',
+            default_value=PathJoinSubstitution([
+                bringup, 'launch', 'profiles', 'imu_inertial_labs.launch.py']),
+            description='Absolute IMU profile launch path.'),
+        DeclareLaunchArgument(
+            'lidar_launch_file',
+            default_value=PathJoinSubstitution([
+                bringup, 'launch', 'profiles', 'lidar_rplidar_c1.launch.py']),
+            description='Absolute LiDAR profile launch path.'),
         DeclareLaunchArgument(
             'gnss_auto_activate',
             default_value=LaunchConfiguration('auto_activate', default='true'),
@@ -100,16 +134,15 @@ def generate_launch_description() -> LaunchDescription:
             description='RTCM correction topic shared by GNSS and NTRIP.'),
         DeclareLaunchArgument(
             'ntrip_params_file',
-            default_value=PathJoinSubstitution(
-                [ntrip, 'config', 'ntrip.yaml.example']),
-            description='NTRIP caster credentials YAML. Override with your '
-                        'real ntrip.yaml.'),
+            default_value='',
+            description='NTRIP credentials YAML; empty uses the GNSS profile '
+                        'default (stock: example with no real caster).'),
         DeclareLaunchArgument(
             'use_rviz', default_value='true',
             description='Launch RViz with the map-frame preset.'),
         DeclareLaunchArgument(
             'use_imu', default_value='true',
-            description='Launch the M2 imu_driver and feed /imu_driver/data '
+            description='Launch the IMU profile and feed /imu_driver/data '
                         'to the global EKF as imu1 (yaw-rate).'),
         DeclareLaunchArgument(
             'imu_start_delay', default_value='12.0',
@@ -118,16 +151,12 @@ def generate_launch_description() -> LaunchDescription:
                         'the M2 startup-race regression (2026-07-04).'),
         DeclareLaunchArgument(
             'use_lidar', default_value='true',
-            description='Launch the M3 RPLIDAR C1 (2D) + scan_safety forward '
+            description='Launch the LiDAR profile + scan_safety forward '
                         'brake (ADR-013).'),
         DeclareLaunchArgument(
             'lidar_dev',
-            default_value=(
-                '/dev/serial/by-id/'
-                'usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_'
-                'f86253bee863ef11a2a1e2a9c169b110-if00-port0'),
-            description='Serial by-id path of the RPLIDAR C1 (CP2102N). '
-                        'Override with lidar_dev:=... .'),
+            default_value=EnvironmentVariable('LIDAR_PORT', default_value=''),
+            description='Override LiDAR port; empty keeps profile settings.'),
         DeclareLaunchArgument(
             'lidar_start_delay', default_value='8.0',
             description='Seconds to delay the LiDAR driver + safety node so '
@@ -144,14 +173,16 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
-    # UM982 RTK GNSS + NTRIP (lifecycle auto-activated inside).
+    # GNSS profile (stock: UM982 RTK GNSS + NTRIP, lifecycle auto-activated).
     # Driver-private params_file/port/auto_activate must not inherit or leak
     # through sibling includes. Group launch configurations resolve in parent.
     gnss = GroupAction(
         scoped=True,
         forwarding=False,
         launch_configurations={
-            'um982_params_file': LaunchConfiguration('gnss_params_file'),
+            'sensor_role': 'gnss',
+            'driver_launch_file': LaunchConfiguration('gnss_launch_file'),
+            'params_file': LaunchConfiguration('gnss_params_file'),
             'port': LaunchConfiguration('gnss_dev'),
             'ntrip_params_file': ntrip_params_file,
             'rtcm_topic': LaunchConfiguration('rtcm_topic'),
@@ -159,10 +190,7 @@ def generate_launch_description() -> LaunchDescription:
             'ros_namespace': LaunchConfiguration('ros_namespace', default=''),
             'use_sim_time': use_sim_time,
         },
-        actions=[IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                PathJoinSubstitution([um982, 'launch', 'gnss_rtk.launch.py'])),
-        )],
+        actions=[OpaqueFunction(function=_include_profile)],
     )
 
     # Dual-EKF + navsat + confidence_gate + heading adapter.
@@ -186,6 +214,8 @@ def generate_launch_description() -> LaunchDescription:
         scoped=True,
         forwarding=False,
         launch_configurations={
+            'sensor_role': 'imu',
+            'driver_launch_file': LaunchConfiguration('imu_launch_file'),
             'params_file': LaunchConfiguration('imu_params_file'),
             'port': LaunchConfiguration('imu_dev'),
             'baud': LaunchConfiguration('imu_baud'),
@@ -195,11 +225,7 @@ def generate_launch_description() -> LaunchDescription:
             'use_rviz': 'false',
             'use_static_tf': 'false',
         },
-        actions=[IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                PathJoinSubstitution(
-                    [imu_pkg, 'launch', 'imu_driver.launch.py'])),
-        )],
+        actions=[OpaqueFunction(function=_include_profile)],
     )
     imu_delayed = TimerAction(
         period=LaunchConfiguration('imu_start_delay'),
@@ -222,21 +248,18 @@ def generate_launch_description() -> LaunchDescription:
     # then HOLDS that command and re-gates it at 20 Hz until the command goes
     # unrefreshed for cmd_timeout_s, so it can also stop a robot that is
     # already moving.
-    lidar_node = Node(
-        package='sllidar_ros2',
-        executable='sllidar_node',
-        name='sllidar_node',
-        output='screen',
-        parameters=[{
-            'channel_type': 'serial',
-            'serial_port': LaunchConfiguration('lidar_dev'),
-            'serial_baudrate': 460800,
-            'frame_id': 'lidar_link',
-            'inverted': False,
-            'angle_compensate': True,
-            'scan_mode': 'Standard',
-        }],
-        remappings=[('scan', '/scan_raw')],
+    lidar = GroupAction(
+        scoped=True,
+        forwarding=False,
+        launch_configurations={
+            'sensor_role': 'lidar',
+            'driver_launch_file': LaunchConfiguration('lidar_launch_file'),
+            'params_file': LaunchConfiguration('lidar_params_file'),
+            'port': LaunchConfiguration('lidar_dev'),
+            'ros_namespace': LaunchConfiguration('ros_namespace', default=''),
+            'use_sim_time': use_sim_time,
+        },
+        actions=[OpaqueFunction(function=_include_profile)],
     )
     # laser_filters LaserScanBoxFilter: masks the robot's own body out of the
     # scan by dropping every return whose (x, y, z) in base_link falls inside
@@ -272,7 +295,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     lidar_delayed = TimerAction(
         period=LaunchConfiguration('lidar_start_delay'),
-        actions=[lidar_node, scan_filter, scan_safety],
+        actions=[lidar, scan_filter, scan_safety],
         condition=IfCondition(LaunchConfiguration('use_lidar')),
     )
 

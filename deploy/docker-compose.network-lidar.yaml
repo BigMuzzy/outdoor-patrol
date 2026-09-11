@@ -1,0 +1,13 @@
+# Optional overlay for either stock or Nav2 Compose (Compose >= 2.24.4).
+# Supply a real network lidar profile via LIDAR_LAUNCH_FILE and explicitly set
+# LIDAR_PORT="" so the profile is not handed a nonexistent serial port.
+# Keep use_lidar=true: the shared scan filter and brake must still run.
+#
+# !override replaces the ENTIRE list. Retain every other required device here
+# when extending the robot's hardware inventory.
+services:
+  robot:
+    devices: !override
+      - "${SERIAL_DEV:-/dev/ttyACM0}:/dev/op-chassis"
+      - "${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}:/dev/op-gnss"
+      - "${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}:/dev/op-imu"

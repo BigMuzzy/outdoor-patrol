@@ -111,6 +111,9 @@ def _state_transition(action, goal):
 @pytest.fixture
 def launch_graph(tmp_path, monkeypatch):
     """Resolve package shares from source and walk launch with real contexts."""
+    for role in ('GNSS', 'IMU', 'LIDAR'):
+        for suffix in ('PORT', 'PARAMS'):
+            monkeypatch.delenv(role + '_' + suffix, raising=False)
     prefix = tmp_path / 'prefix'
     markers = prefix / 'share/ament_index/resource_index/packages'
     markers.mkdir(parents=True)

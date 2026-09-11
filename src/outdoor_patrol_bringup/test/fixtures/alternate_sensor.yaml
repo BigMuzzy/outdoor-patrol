@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    model: replacement-test-fixture
+    device_uri: tcp://192.0.2.10:1234

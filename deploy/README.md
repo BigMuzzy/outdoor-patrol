@@ -4,7 +4,8 @@ Production container image for the `outdoor-patrol` robot. Unlike the
 dev containers in [`../.devcontainer/`](../.devcontainer/), this image:
 
 - targets `linux/arm64` (e.g. Orange Pi 5 / RK3588) by default,
-- is built from `ros:${ROS_DISTRO}-ros-base` — no RViz, no Gazebo, no GUI,
+- is built from `ros:${ROS_DISTRO}-ros-base`, with runtime dependencies resolved
+  from the workspace package manifests (not a guarantee of a GUI-free image),
 - uses a multi-stage build so the runtime image carries only the compiled
   `install/` tree and its runtime dependencies,
 - is intended to be started by `systemd` or `docker compose up -d` on the
@@ -96,9 +97,9 @@ up after reboots as long as the Docker daemon does.
 
 Both Compose entry points accept `SERIAL_DEV`, `GNSS_DEV`, `IMU_DEV` and
 `LIDAR_DEV` as **host-side** paths. They are mapped to fixed container paths;
-the launch command always passes those container paths to the drivers:
+the service supplies those paths as the launch arguments' defaults:
 
-| Host variable | Container path / launch port |
+| Host variable | Default container path / launch port |
 |---|---|
 | `SERIAL_DEV` | `/dev/op-chassis` (`serial_dev`) |
 | `GNSS_DEV` | `/dev/op-gnss` (`gnss_dev`) |
@@ -172,6 +173,65 @@ Both devcontainers retain their existing live `/dev` mount, so installed host
 roles appear automatically. They do **not** read Compose's `.env`. Their
 automatic setup remains chassis-only and leaves a full host-role installation
 untouched; standalone launches retain legacy ports unless explicitly overridden.
+
+### Selecting driver profiles
+
+The stock drivers are selected by ordinary
+[per-role launch profiles](../src/outdoor_patrol_bringup/README.md).
+Set `GNSS_LAUNCH_FILE`, `IMU_LAUNCH_FILE`, or `LIDAR_LAUNCH_FILE` to an absolute
+**in-container** launch path. `GNSS_PARAMS`, `IMU_PARAMS`, and `LIDAR_PARAMS`
+select native ROS YAML files. Empty config overrides use that profile's
+defaults; they do not inject the previous model's YAML.
+
+The existing data volume is available at `/data`, so, for example, a reviewed
+profile and YAML under the host data directory can be selected without
+rebuilding an image that already contains their required driver/adapter:
+
+```bash
+IMU_LAUNCH_FILE=/data/profiles/imu_replacement.launch.py \
+IMU_PARAMS=/data/config/imu_replacement.yaml \
+  docker compose -f deploy/docker-compose.yaml up -d --force-recreate robot
+```
+
+Adding a new ROS driver package still requires installing/building it into the
+image. Check message semantics, QoS, calibration and TF using the
+[profile contract](../src/outdoor_patrol_bringup/README.md#contract-for-a-replacement);
+matching topic names alone is insufficient. Mount changes can also require
+packaged chassis/heading/brake configuration changes and a rebuild or explicit
+file mounts.
+
+**Non-USB example:** a network lidar must not leave a nonexistent USB device
+in `devices:`. With Compose **2.24.4+**, use the provided
+[network-lidar overlay](docker-compose.network-lidar.yaml), your actual
+installed/mounted network driver profile, and an explicitly empty `LIDAR_PORT`:
+
+```bash
+LIDAR_LAUNCH_FILE=/data/profiles/lidar_network.launch.py LIDAR_PORT='' \
+  docker compose -f deploy/docker-compose.yaml \
+    -f deploy/docker-compose.network-lidar.yaml config --quiet
+
+LIDAR_LAUNCH_FILE=/data/profiles/lidar_network.launch.py LIDAR_PORT='' \
+  docker compose -f deploy/docker-compose.yaml \
+    -f deploy/docker-compose.network-lidar.yaml up -d --force-recreate robot
+```
+
+The overlay also works on top of the Nav2 Compose file. It replaces the entire
+device list, retaining chassis/GNSS/IMU but removing lidar USB passthrough.
+Update it if adding more hardware. It **does not provide or validate a
+particular network lidar driver**; supply a profile producing `/scan_raw`.
+Do not set `use_lidar:=false`, which would disable the shared filter/brake too.
+
+`GNSS_PORT`, `IMU_PORT`, and `LIDAR_PORT` are advanced **in-container** port
+overrides. Unset means the usual `/dev/op-*` path; explicitly empty means the
+profile owns transport configuration. Changing them does not remove a Docker
+device binding: a non-serial GNSS/IMU similarly needs a local Compose overlay
+that removes its old USB mapping. Port-only USB swaps normally change
+`*_DEV` or the host rule, never `*_PORT`.
+
+Optional ports/configs are passed as environment-backed launch defaults:
+the ROS CLI rejects an empty argument such as `lidar_dev:=`. The explicitly
+empty environment value in the network example is valid and leaves the
+selected profile in charge of transport.
 
 ### Ad-hoc `docker run`
 
@@ -253,3 +313,21 @@ These tests render both Compose configurations and run the installer with
 fake udev/sudo and temporary filesystem roots. They never install host rules
 or start a robot container. Run them explicitly: `colcon test` only discovers
 the ROS package tests, not this directory.
+
+The ROS package also has an opt-in, socket-free Compose-to-ROS integration
+test. In a ROS Jazzy test environment, build/install bringup at the deployment
+prefix `/opt/outdoor-patrol/install` and make its dependency package shares
+available (including the installed NTRIP example). Set
+`OUTDOOR_PATROL_COMPOSE_BIN` to an existing standalone Compose v2 executable:
+
+```bash
+OUTDOOR_PATROL_COMPOSE_BIN=/path/to/docker-compose \
+  pytest -q src/outdoor_patrol_bringup/test/test_compose_launch.py
+```
+
+It feeds **real rendered argv** through the ROS CLI's `parse_launch_arguments`,
+then expands the launch using the service's environment. It checks both
+Compose entry points with stock defaults, each sensor's config override and
+a fake non-serial lidar profile. No Docker socket, running daemon, or devices
+are needed for these integration cases. Without the explicit opt-in, they
+are reported as skipped by the normal ROS package test run.

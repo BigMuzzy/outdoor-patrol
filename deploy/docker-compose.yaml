@@ -27,6 +27,14 @@ services:
       # devices only. See .env.example to opt in to verified host role aliases.
       SERIAL_DEV: "/dev/op-chassis"
       SERIAL_BAUD: "${SERIAL_BAUD:-115200}"
+      # ROS CLI rejects empty name:= arguments. Environment-backed launch
+      # defaults carry optional values, including explicitly empty ports.
+      GNSS_PORT: "${GNSS_PORT-/dev/op-gnss}"
+      IMU_PORT: "${IMU_PORT-/dev/op-imu}"
+      LIDAR_PORT: "${LIDAR_PORT-/dev/op-lidar}"
+      GNSS_PARAMS: "${GNSS_PARAMS:-}"
+      IMU_PARAMS: "${IMU_PARAMS:-}"
+      LIDAR_PARAMS: "${LIDAR_PARAMS:-}"
     # Keep legacy host defaults so existing installations need no udev change.
     # Docker resolves each host symlink at container creation and creates the
     # fixed target node. Recreate the container after a USB replacement/reset.
@@ -69,8 +77,8 @@ services:
       - "gnss_localization.launch.py"
       - "serial_dev:=/dev/op-chassis"
       - "serial_baud:=${SERIAL_BAUD:-115200}"
-      - "gnss_dev:=/dev/op-gnss"
-      - "imu_dev:=/dev/op-imu"
       - "use_rviz:=false"
       - "ntrip_params_file:=${NTRIP_PARAMS:-/opt/outdoor-patrol/install/share/ntrip_client/config/ntrip.yaml.example}"
-      - "lidar_dev:=/dev/op-lidar"
+      - "gnss_launch_file:=${GNSS_LAUNCH_FILE:-/opt/outdoor-patrol/install/share/outdoor_patrol_bringup/launch/profiles/gnss_um982.launch.py}"
+      - "imu_launch_file:=${IMU_LAUNCH_FILE:-/opt/outdoor-patrol/install/share/outdoor_patrol_bringup/launch/profiles/imu_inertial_labs.launch.py}"
+      - "lidar_launch_file:=${LIDAR_LAUNCH_FILE:-/opt/outdoor-patrol/install/share/outdoor_patrol_bringup/launch/profiles/lidar_rplidar_c1.launch.py}"

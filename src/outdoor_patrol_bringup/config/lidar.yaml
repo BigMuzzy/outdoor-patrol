@@ -1,0 +1,13 @@
+# Stock RPLIDAR C1 tuning. Mount orientation is in chassis.yaml; the matching
+# raw-scan forward bearing is in outdoor_patrol_safety/config/scan_safety.yaml.
+sllidar_node:
+  ros__parameters:
+    channel_type: serial
+    # Legacy bare-metal/devcontainer default; deployment overrides this with
+    # /dev/op-lidar. A replacement profile owns its own transport settings.
+    serial_port: /dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0
+    serial_baudrate: 460800
+    frame_id: lidar_link
+    inverted: false
+    angle_compensate: true
+    scan_mode: Standard

@@ -13,6 +13,8 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
+        ('share/' + package_name + '/launch/profiles',
+            glob('launch/profiles/*.launch.py')),
         ('share/' + package_name + '/urdf', glob('urdf/*.urdf.xacro')),
         ('share/' + package_name + '/config', glob('config/*.yaml')),
         ('share/' + package_name + '/config', glob('config/*.rviz')),
@@ -21,7 +23,7 @@ setup(
     zip_safe=True,
     maintainer='Outdoor Patrol Team',
     maintainer_email='dev@example.com',
-    description='M0 bringup for the outdoor patrol robot.',
+    description='Hardware profiles and localization bringup for outdoor patrol.',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
