@@ -1,0 +1,108 @@
+digraph devices {
+  graph [rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.35, ranksep=0.6,
+         fontname="DejaVu Sans", fontsize=17, compound=true,
+         label="Stock device paths: physical connection -> host selection -> fixed container address -> ROS contract",
+         labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eaf2ff", color="#456386",
+        fontname="DejaVu Sans", fontsize=11, margin="0.16,0.12"];
+  edge [color="#526174", fontname="DejaVu Sans", fontsize=9, arrowsize=0.7];
+
+  subgraph cluster_hardware {
+    label="Physical endpoints (recorded stock configuration)";
+    color="#a4b4c9"; style=rounded;
+    esp [label="ESP32-S3\nnative USB Serial/JTAG"];
+    gnss [label="UM982 GNSS\nCH340 USB-UART"];
+    imu [label="IMU via recorded FT230X\nunit/protocol must be verified"];
+    lidar [label="RPLIDAR C1\nCP2102N USB-UART"];
+    motors [label="Firmware motor HAL\nVESC CAN or ZLAC CANopen\n(build-time choice)",
+            fillcolor="#e6f3e8", color="#43704a"];
+    rc [label="RC receiver: 3 PWM channels\nGPIO 4 / 5 / 6"];
+    motors -> esp [label="CAN commands / feedback", dir=both];
+    rc -> esp [label="manual override"];
+    { rank=same; esp; gnss; imu; lidar;
+      esp -> gnss -> imu -> lidar [style=invis]; }
+  }
+
+  subgraph cluster_host {
+    label="Linux host: *_DEV selects the source";
+    color="#a8852c"; style=rounded;
+    hs [label="SERIAL_DEV\nlegacy: /dev/ttyACM0\nopt-in: /dev/op-chassis",
+        fillcolor="#fff6df"];
+    hg [label="GNSS_DEV\nlegacy: CH340 by-id\nopt-in: /dev/op-gnss",
+        fillcolor="#fff6df"];
+    hi [label="IMU_DEV\nlegacy: FT230X by-id\nopt-in: /dev/op-imu",
+        fillcolor="#fff6df"];
+    hl [label="LIDAR_DEV\nlegacy: CP2102N by-id\nopt-in: /dev/op-lidar",
+        fillcolor="#fff6df"];
+    identity [shape=note, label="Opt-in host rules\nmatch unit serial or USB ID_PATH\nGNSS topology pin is REQUIRED\n(no guessed tty / generic CH340 rule)",
+              fillcolor="#fff6df"];
+    { rank=same; hs; hg; hi; hl; identity;
+      hs -> hg -> hi -> hl -> identity [style=invis]; }
+  }
+
+  subgraph cluster_container {
+    label="Robot service (stock or Nav2 Compose): bindings + launch";
+    color="#43704a"; style=rounded;
+    cs [label="/dev/op-chassis\nserial_dev argument", fillcolor="#e6f3e8"];
+    cg [label="/dev/op-gnss\nGNSS_PORT -> gnss_dev", fillcolor="#e6f3e8"];
+    ci [label="/dev/op-imu\nIMU_PORT -> imu_dev", fillcolor="#e6f3e8"];
+    cl [label="/dev/op-lidar\nLIDAR_PORT -> lidar_dev", fillcolor="#e6f3e8"];
+    agent [label="micro_ros_agent\ntransport for firmware /esp32_drive"];
+    gp [label="gnss_um982 profile\num982_driver lifecycle node\nport; 115200 baud"];
+    ip [label="imu_inertial_labs profile\nimu_driver lifecycle node\nport; 2 Mbaud / calib_hr"];
+    lp [label="lidar_rplidar_c1 profile\nsllidar_node\nserial_port; 460800 baud"];
+    ntrip [label="ntrip_client\ninside stock GNSS profile", fillcolor="#f3eefb"];
+    { rank=same; cs; cg; ci; cl;
+      cs -> cg -> ci -> cl [style=invis]; }
+    { rank=same; agent; gp; ntrip; ip; lp;
+      agent -> gp -> ntrip -> ip -> lp [style=invis]; }
+  }
+
+  subgraph cluster_contracts {
+    label="ROS interfaces (historical names retained)";
+    color="#a4b4c9"; style=rounded;
+    st [label="/odom -> EKFs\n/cmd_vel -> firmware"];
+    gt [label="/um982_driver/fix\n/um982_driver/heading\n/um982_driver/nmea_sentence"];
+    it [label="/imu_driver/data\nsensor_msgs/Imu"];
+    lt [label="/scan_raw\nsensor_msgs/LaserScan"];
+    { rank=same; st; gt; it; lt;
+      st -> gt -> it -> lt [style=invis]; }
+  }
+
+  subgraph cluster_shared {
+    label="Shared consumers / ownership";
+    color="#a4b4c9"; style=rounded;
+    se [label="Local + global EKFs\nwheel odometry"];
+    ge [label="Confidence gate + heading adapter\nnavsat_transform + global EKF"];
+    ie [label="Global EKF\ngyro yaw rate only"];
+    le [label="scan_box_filter -> /scan\nscan_safety + Nav2 costmaps"];
+    tf [label="chassis.yaml -> Xacro\nrobot_state_publisher -> mount TF",
+        fillcolor="#e6f3e8"];
+    { rank=same; se; ge; ie; le; tf;
+      se -> ge -> ie -> le -> tf [style=invis]; }
+  }
+
+  esp -> hs [label="USB"]; gnss -> hg [label="USB"];
+  imu -> hi [label="USB"]; lidar -> hl [label="USB"];
+  hs -> cs [label="devices source:target"];
+  hg -> cg; hi -> ci; hl -> cl;
+  cs -> agent; cg -> gp; ci -> ip; cl -> lp;
+  agent -> st; gp -> gt; ip -> it; lp -> lt;
+  st -> se; gt -> ge; it -> ie; lt -> le;
+
+  caster [label="NTRIP caster\nnetwork, no /dev binding", fillcolor="#f3eefb",
+          color="#6b5a8e"];
+  caster -> ntrip [label="TCP", color="#6b5a8e"];
+  gp -> ntrip [xlabel="/rtcm", color="#6b5a8e", constraint=false, dir=back];
+  gt -> ntrip [label="rover GGA upload", color="#6b5a8e", constraint=false,
+               tailport=s, headport=e];
+  tf -> ge [style=dashed, color="#43704a", constraint=false];
+  tf -> ie [style=dashed, color="#43704a", constraint=false];
+  tf -> le [style=dashed, color="#43704a", constraint=false];
+
+  note [shape=note, fillcolor="#fffdf3", color="#a8a28d", fontsize=11,
+        label="Source/configuration view,\lNOT a live hardware capture.\l\lArrows describe address resolution;\lserial traffic is bidirectional.\l\lProfiles replace vendor nodes,\lnot shared filters/brakes/contracts.\l\lDocker binds at create time.\lRoles do NOT solve hotplug:\lrecreate after a reset/swap.\l"];
+  identity -> note [style=invis];
+  ntrip -> note [style=invis];
+  tf -> note [style=invis];
+}

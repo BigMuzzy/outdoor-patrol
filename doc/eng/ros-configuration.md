@@ -2,7 +2,10 @@
 
 **Source snapshot:** 2026-09-09 UTC, working tree on branch
 `agents/nav2-driveway-field-test`, based on commit `dbd9cc9`.
-This documentation work does not change runtime code.
+**Hardware-boundary update:** 2026-09-11 UTC, through `007e889`: selectable
+sensor launch profiles and role-based container mappings. The stock
+node/topic/TF graph below remains unchanged; other sections retain the
+original node-graph review.
 **Platform:** ROS 2 Jazzy; Gazebo Harmonic for simulation.
 
 This describes the **checked-in launch files, node implementations and YAML**,
@@ -19,11 +22,16 @@ omitted. A ROS node, a process, a topic and a TF frame are different things:
 the micro-ROS agent is a transport process; the firmware exposes `/esp32_drive`;
 Nav2 costmap nodes live inside their controller/planner processes.
 
+The hardware boundary below the driver nodes — physical device, USB bridge,
+host `/dev` node, container mapping and the parameter each driver actually
+opens — is documented separately in [Device connection paths and
+mappings](device-mapping.md).
+
 ## 1. Which launch creates which graph?
 
 | Entry point | What it actually starts | Important boundary |
 |---|---|---|
-| [Hardware `gnss_localization.launch.py`](../../src/outdoor_patrol_bringup/launch/gnss_localization.launch.py) | Agent, robot description/TF, UM982 + NTRIP, dual EKF, heading adapter, confidence gate, navsat transform; optional IMU, lidar/filter/brake and RViz | No route recorder or Nav2. IMU and lidar default on; lidar group includes the brake. |
+| [Hardware `gnss_localization.launch.py`](../../src/outdoor_patrol_bringup/launch/gnss_localization.launch.py) | Stock profiles: agent, robot description/TF, UM982 + NTRIP, dual EKF, heading adapter, confidence gate, navsat transform; optional IMU, lidar/filter/brake and RViz | No route recorder or Nav2. Sensor profiles are replaceable; shared localization/filter/brake stay in bringup. IMU and lidar default on. |
 | [Nav2 `nav2.launch.py`](../../src/outdoor_patrol_nav/launch/nav2.launch.py) | Six lifecycle servers plus `/lifecycle_manager_navigation` | No mission, sensor drivers, localization or `scan_safety`. Requires those separately. |
 | [Simulation `sim.launch.py`](../../src/outdoor_patrol_sim/launch/sim.launch.py) | Gazebo, spawn helper, bridge, robot state publisher, odometry shim; GNSS shim, localization and brake default on | `nav:=false` by default. `nav:=true` adds servers **only**, not the mission. |
 | [Route recording launch](../../src/outdoor_patrol_route/launch/route_record.launch.py) | `/route_recorder` | Consumes an existing localization graph; never drives. |
@@ -35,6 +43,17 @@ Nav2 costmap nodes live inside their controller/planner processes.
 `outdoor-patrol:nav2`, host networking/IPC, Cyclone DDS and
 `ROS_LOCALHOST_ONLY=0`. It does not set `ROS_DOMAIN_ID` (ROS default: **0**).
 The host data directory is mounted at `/data`.
+
+The robot service maps its selected host devices to `/dev/op-chassis`,
+`/dev/op-gnss`, `/dev/op-imu` and `/dev/op-lidar`. Legacy host defaults remain
+usable; host role aliases are an explicit opt-in. `*_PORT` and `*_PARAMS`
+environment values supply optional launch defaults without invalid empty
+ROS CLI arguments. See [device mapping](device-mapping.md) for the exact
+host/container boundary and [profiles](../../src/outdoor_patrol_bringup/README.md)
+for replacement contracts.
+
+Compose profiles (`record`, `nav2`) select services. They are distinct from
+the per-sensor ROS launch profiles selected with `*_LAUNCH_FILE`.
 
 | Service / container | Profile | Entry point / selected configuration |
 |---|---|---|
@@ -113,7 +132,8 @@ map origin.
 
 ### Driver startup and hardware assumptions
 
-- Agent: serial transport, `/dev/ttyACM0` by default, baud argument 115200.
+- Agent: serial transport, standalone default `/dev/ttyACM0`; Compose passes
+  `/dev/op-chassis`. The baud argument is 115200 (ignored over native USB CDC).
   It exposes the firmware's ROS interfaces; it is not the `/odom` estimator.
 - [UM982 rover YAML](../../src/um982_driver/config/um982_rover.yaml):
   serial 115200, `mode=rover`, `frame_id=gnss_link`. The RTK launch starts
@@ -126,10 +146,18 @@ map origin.
 - Hardware bringup delays the lidar/filter/brake group by **8 s**, and the
   IMU by **12 s**. Both groups default enabled. IMU static-TF publication is
   disabled there because robot state publisher owns its mount.
-- Lidar: serial 460800, `frame_id=lidar_link`, `inverted=false`,
+- Stock [lidar profile YAML](../../src/outdoor_patrol_bringup/config/lidar.yaml):
+  serial 460800, `frame_id=lidar_link`, `inverted=false`,
   `angle_compensate=true`, scan mode `Standard`. The
   [box filter](../../src/outdoor_patrol_bringup/config/scan_box_filter.yaml)
   removes chassis returns using TF before the scan reaches the brake.
+
+The stock GNSS and IMU profiles reuse their existing lifecycle launches.
+`gnss_auto_activate` and `imu_auto_activate` are independent; the legacy
+`auto_activate` alias now controls GNSS only. Profile-private launch
+configuration is scoped so a sensor cannot inherit the local EKF's generic
+`params_file`. Frame/heading/brake calibration still requires explicit
+checking when the physical sensor or mount changes.
 
 ## 3. TF ownership and geometry
 

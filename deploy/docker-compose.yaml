@@ -69,7 +69,8 @@ services:
     # Unset -> the in-image example (standalone fix, no live caster).
     # Keyboard teleop still works in a second shell:
     #   docker exec -it outdoor-patrol \
-    #     ros2 run teleop_twist_keyboard teleop_twist_keyboard
+    #     ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+    #       --ros-args -r /cmd_vel:=/cmd_vel_raw
     command:
       - "ros2"
       - "launch"

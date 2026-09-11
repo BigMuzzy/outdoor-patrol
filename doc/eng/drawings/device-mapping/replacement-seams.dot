@@ -1,0 +1,48 @@
+digraph replacement_seams {
+  graph [rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.4, ranksep=0.7,
+         fontname="DejaVu Sans", fontsize=17,
+         label="Device replacement: edit the boundary that actually changed", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#eaf2ff", color="#456386",
+        fontname="DejaVu Sans", fontsize=12, margin="0.17,0.13"];
+  edge [color="#526174", fontname="DejaVu Sans", fontsize=10, arrowsize=0.7];
+
+  unit [label="Different unit / USB identity", fillcolor="#fff6df", color="#a8852c"];
+  model [label="Different make / wire protocol", fillcolor="#fff6df", color="#a8852c"];
+  transport [label="USB replaced by network", fillcolor="#fff6df", color="#a8852c"];
+  mount [label="Mount / axes / sensing changed", fillcolor="#fff6df", color="#a8852c"];
+
+  host [label="Host-only binding\nrobot-specific udev rule OR *_DEV\nopt-in aliases: /dev/op-*",
+        fillcolor="#e6f3e8", color="#43704a"];
+  profile [label="Per-role ROS launch profile\n*_LAUNCH_FILE + native *_PARAMS\nreuse driver, add adapter if needed",
+           fillcolor="#e6f3e8", color="#43704a"];
+  compose [label="Compose override removes USB\n*_PORT explicitly empty\nprofile config owns network transport",
+           fillcolor="#e6f3e8", color="#43704a"];
+  calibration [label="chassis.yaml mount pose\nheading offset / scan forward bearing\ncovariance, rate and range checks",
+               fillcolor="#e6f3e8", color="#43704a"];
+
+  address [label="Fixed container device names\n/dev/op-chassis  /dev/op-gnss\n/dev/op-imu      /dev/op-lidar"];
+  driver [label="Selected driver + adapters\npackages must be installed\nlifecycle owned by the profile"];
+  geometry [label="Robot description / mount TF\nand calibrated sensor parameters"];
+
+  contract [label="STABLE APPLICATION CONTRACT\n/um982_driver/fix + baseline ENU heading\n/imu_driver/data  /scan_raw\nRTCM + GGA loop where required\ncorrect frames, units, QoS, covariance, timestamps",
+            fillcolor="#e6f3e8", color="#43704a", penwidth=2];
+  shared [label="Unchanged shared stack\nEKFs / navsat / heading adapter\nrobot_state_publisher\nscan filter + forward brake / Nav2",
+          fillcolor="#e6f3e8", color="#43704a", penwidth=2];
+
+  unit -> host -> address -> driver;
+  model -> profile -> driver;
+  transport -> compose -> driver;
+  mount -> calibration -> geometry;
+  driver -> contract -> shared;
+  geometry -> shared;
+
+  { rank=same; unit; model; transport; mount;
+    unit -> model -> transport -> mount [style=invis]; }
+  { rank=same; host; profile; compose; calibration;
+    host -> profile -> compose -> calibration [style=invis]; }
+  { rank=same; address; driver; geometry; }
+
+  note [shape=note, fillcolor="#fffdf3", color="#a8a28d", fontsize=11,
+        label="Host roles are opt-in; legacy host defaults remain usable.\lIdentity-only swaps need no image rebuild if protocol/calibration are unchanged.\lNew driver dependencies require a build; mounted profile/YAML edits do not.\lA topic remap cannot repair incompatible message semantics.\lKeep the lidar filter/brake enabled for a network replacement.\lRecreate Docker device bindings after USB replacement; verify hardware with motion inhibited.\l"];
+  shared -> note [style=invis];
+}

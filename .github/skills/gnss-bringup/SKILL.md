@@ -13,8 +13,12 @@ NTRIP (`gnss_rtk.launch.py`) → dual-EKF + `heading_to_imu` + `confidence_gate`
 + `navsat_transform` (`global_localization.launch.py`).
 
 Prereqs: robot reachable (`ssh robot`, see **connect-to-robot**); deploy stack
-running (see **deploy-to-robot**). UM982 = `/dev/ttyUSB0`
-(`usb-1a86_USB_Serial-if00-port0`), mapped into the container by its by-id path.
+running (see **deploy-to-robot**). The stock GNSS profile maps the host source
+selected by `GNSS_DEV` to `/dev/op-gnss` inside the deployment container.
+The legacy host default is the recorded CH340 by-id path; opt-in host role
+rules use an explicit identity/topology match. Do not assume a `ttyUSB` number
+or that host by-id names exist inside the container. See
+[device mapping](../../../doc/eng/device-mapping.md).
 Host & robot are both Cyclone DDS, `ROS_DOMAIN_ID` unset (=0), host networking,
 so the dev box discovers the robot's topics directly.
 
@@ -97,9 +101,10 @@ not being fused.
 
 ## Driving during the test
 
-The deployed stack includes teleop. Drive from the host:
+The deployed stack includes the chassis agent and lidar brake. Run keyboard
+teleop separately on the host, routed through the brake:
 ```bash
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p speed:=0.3 -p turn:=0.4
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r /cmd_vel:=/cmd_vel_raw -p speed:=0.3 -p turn:=0.4
 ```
 Chassis failsafe (firmware `rc_failsafe.c`): RC mode switch >1500 µs = MANUAL
 (sticks); else `/cmd_vel` fresh (<500 ms) = AUTONOMOUS; else FAILSAFE_STOP
@@ -117,7 +122,7 @@ switch is the override** — confirm the area is clear before enabling motion.
 ## Troubleshooting
 
 - **No `/um982_driver/fix`** — check the device is mapped in the container
-  (`docker exec outdoor-patrol ls /dev/serial/by-id/`) and the lifecycle node
+  (`docker exec outdoor-patrol ls -l /dev/op-gnss`) and the lifecycle node
   is active (`/um982_driver/transition_event`, node reaches `active`).
 - **Stuck at `status: 0` outdoors** — NTRIP not connected: check
   `docker compose logs` for `ntrip_client` auth/host errors; verify

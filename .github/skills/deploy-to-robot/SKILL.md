@@ -12,7 +12,8 @@ the image locally, and recreates the container.
 
 - Robot host: `ssh robot` (see the **connect-to-robot** skill).
 - Repo on robot: `~/code/outdoor-patrol` (i.e. `/home/ubuntu/code/outdoor-patrol`).
-- Image/tag: `outdoor-patrol:arm64`; service/container name: `outdoor-patrol`.
+- Image/tag: `outdoor-patrol:arm64`; Compose service: `robot`;
+  container name: `outdoor-patrol`.
 - A full build takes **~9 min** on the Pi (longer if base layers are cold).
 
 ## ⚠️ Read this first (lessons learned)
@@ -23,11 +24,11 @@ the image locally, and recreates the container.
    `install/`, `log/`, `src/robot-research`) are excluded by
    [.dockerignore](../../../.dockerignore) and don't affect the image anyway.
 2. **The image ≠ what's launched.** The compose `command:` currently runs
-   `outdoor_patrol_bringup teleop.launch.py`. New launches/configs (e.g.
-   `global_localization.launch.py`, `heading_to_imu.yaml`) get baked into the
-   image but are **not started** unless the compose `command:` (or an
-   `IncludeLaunchDescription`) actually invokes them. After deploying, confirm
-   the running command launches what the user expects.
+   `outdoor_patrol_bringup gnss_localization.launch.py` with stock GNSS,
+   IMU and lidar profiles plus shared localization/filter/brake. Additional
+   drivers/configs may be baked into the image but do **not** run unless
+   selected by a profile or explicitly launched/included. After deploying,
+   confirm the effective command and selected profiles match the user's intent.
 3. **Submodules matter.** `git pull` alone won't move them; always run
    `git submodule update --init --recursive` (esp. `esp32-s3-uros-controller`
    firmware bumps and `robot-research`).
@@ -85,23 +86,32 @@ add swap on the Pi.
 
 ```bash
 ssh robot 'cd ~/code/outdoor-patrol && \
-  docker compose -f deploy/docker-compose.yaml up -d && docker ps'
+  docker compose -f deploy/docker-compose.yaml up -d --force-recreate robot && docker ps'
 ```
 
 `restart: unless-stopped` means it also survives Pi reboots.
+Recreation, not just restart, is required after USB re-enumeration. Host `*_DEV`
+values select sources; container targets stay `/dev/op-*`. Role-based host
+aliases require the explicit [host setup](../../../deploy/README.md#opt-in-to-stable-host-roles);
+the default host paths remain backward-compatible. Do not install generic
+GNSS rules or guess a USB socket while deploying.
 
 ### Step 6 — Verify
 
 ```bash
 ssh robot 'docker inspect -f "Status={{.State.Status}} Restarts={{.RestartCount}}" outdoor-patrol; \
-  sed -n "57,70p" ~/code/outdoor-patrol/deploy/docker-compose.yaml; \
+  docker inspect -f "{{json .Config.Cmd}}" outdoor-patrol; \
+  docker inspect -f "{{json .HostConfig.Devices}}" outdoor-patrol; \
   docker compose -f ~/code/outdoor-patrol/deploy/docker-compose.yaml logs --tail=40'
 ```
 
 Healthy = `Status=running`, `Restarts=0`, and the launch reaches its nodes
 (e.g. `robot_state_publisher ... Robot initialized`, `micro_ros_agent ... running`).
-Re-read the compose `command:` (the `sed` line) and confirm it launches what the
-user actually wanted — flag it if not (Lesson #2).
+Check the effective container argv and device bindings above, not a fixed line
+range in the source YAML, and confirm the selected launch profiles match what
+the user wanted — flag a mismatch (Lesson #2). Sensor ports and optional YAML
+paths use environment-backed launch defaults; see the
+[profile contract](../../../src/outdoor_patrol_bringup/README.md).
 
 ## Troubleshooting
 
@@ -109,11 +119,15 @@ user actually wanted — flag it if not (Lesson #2).
   container can bind a NIC with no IP. See
   [doc/eng/wiki/deployment/pi-container-races-wifi-at-boot.md](../../../doc/eng/wiki/deployment/pi-container-races-wifi-at-boot.md).
   A `docker restart outdoor-patrol` usually fixes a one-off.
-- **Container restart-looping** — check `docker compose logs`; common causes are
-  a missing serial device (`SERIAL_DEV`), a launch referencing an uninstalled
-  config, or the entrypoint's network wait timing out.
+- **Container will not start / restart-looping** — check all host device
+  sources (`SERIAL_DEV`, `GNSS_DEV`, `IMU_DEV`, `LIDAR_DEV`). A missing source
+  prevents container creation, including missing `/dev/op-*` aliases after
+  opting in without installing rules. If the container exists, inspect
+  `docker compose logs` for a missing profile/config or network-wait timeout.
 - **`Permission denied` on `/dev/tty…`** — the device isn't mapped or the group
-  is missing; the current compose uses permissive `/dev` passthrough for bring-up.
+  is missing; production uses explicit source-to-role mappings and `dialout`.
+  The privileged live `/dev` mount is a devcontainer setting, not production
+  Compose behavior.
 - **Build pulls the wrong ROS distro / arch** — image is `linux/arm64`,
   `ros:${ROS_DISTRO}-ros-base`. Override with `--build-arg ROS_DISTRO=...` only
   deliberately.

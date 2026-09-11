@@ -14,9 +14,10 @@ robot:
    [outdoor_patrol_loc]         navsat_transform -> odom->base_link, map->odom
   rviz2 (optional)              fixed frame = map
 
-Drive with the keyboard in a SEPARATE terminal (needs a real TTY):
-
-    ros2 run teleop_twist_keyboard teleop_twist_keyboard
+Drive with keyboard teleop in a SEPARATE terminal (needs a real TTY).
+Remap its /cmd_vel publisher to /cmd_vel_raw to keep the lidar brake in the
+command path; see the repository README (GNSS global localization) for the
+full command.
 
 NTRIP credentials: pass `ntrip_params_file:=/path/to/ntrip.yaml`; the default
 points at the package example (no real caster).

@@ -135,19 +135,31 @@ ros2 launch outdoor_patrol_bringup gnss_localization.launch.py \
   serial_dev:=/dev/ttyACM0 \
   ntrip_params_file:=$(pwd)/ntrip.yaml
 
-# Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
+# Terminal 2: keyboard teleop through the lidar brake (needs a real TTY)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r /cmd_vel:=/cmd_vel_raw
 ```
 
-Before a real run, set the heading `yaw_offset` in
-[`heading_to_imu`](src/outdoor_patrol_loc/src/heading_to_imu.cpp) from the
-measured antenna-baseline mount angle — until then the `map` orientation is
-unaligned. The datum is auto-set on the first RTK fix, so **start near the
-dock** to keep coordinates small.
+Before a real run, verify the `yaw_offset` in the
+[heading adapter configuration](src/outdoor_patrol_loc/config/heading_to_imu.yaml)
+against the measured antenna baseline. The configured `-pi/2` offset matches
+the lateral-baseline assumption; this change has not field-verified it.
+Check antenna order and physical heading, especially after a replacement or
+remount. Datum is auto-set on the first valid fix, so **start near the dock**
+to keep coordinates small.
 
 Acceptance: at the dock origin, drive a 20 m line and confirm the EKF pose
 tracks GNSS within 0.3 m; cover the antenna mid-drive and confirm the gate
 inflates covariance (no `map` jump) and recovers cleanly.
+
+### Device replacement and connection diagrams
+
+See [device connection paths and replacement boundaries](doc/eng/device-mapping.md)
+for the physical/host/container/ROS diagrams. [Sensor launch profiles](src/outdoor_patrol_bringup/README.md)
+select a different driver and native configuration without editing shared
+bringup. [Deployment configuration](deploy/README.md) supports fixed container
+device names, opt-in host role aliases and non-USB overrides; existing host
+device defaults remain usable. Hardware identity and model compatibility must
+still be verified on the robot.
 
 ### Simulation (Gazebo Harmonic) — no hardware required
 
