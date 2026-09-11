@@ -82,13 +82,15 @@ services:
       - apparmor:unconfined
     environment:
       <<: *common-env
-      SERIAL_DEV: "${SERIAL_DEV:-/dev/ttyACM0}"
+      SERIAL_DEV: "/dev/op-chassis"
       SERIAL_BAUD: "${SERIAL_BAUD:-115200}"
+    # Host sources remain backward-compatible; container targets are roles.
+    # .env.example opts in to host roles after installing/verifying udev rules.
     devices:
-      - "${SERIAL_DEV:-/dev/ttyACM0}:${SERIAL_DEV:-/dev/ttyACM0}"
-      - "${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}:${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}"
-      - "${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}:${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}"
-      - "${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}:${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"
+      - "${SERIAL_DEV:-/dev/ttyACM0}:/dev/op-chassis"
+      - "${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}:/dev/op-gnss"
+      - "${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}:/dev/op-imu"
+      - "${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}:/dev/op-lidar"
     group_add:
       - dialout
     stdin_open: true
@@ -98,13 +100,13 @@ services:
       - "launch"
       - "outdoor_patrol_bringup"
       - "gnss_localization.launch.py"
-      - "serial_dev:=${SERIAL_DEV:-/dev/ttyACM0}"
+      - "serial_dev:=/dev/op-chassis"
       - "serial_baud:=${SERIAL_BAUD:-115200}"
-      - "gnss_dev:=${GNSS_DEV:-/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0}"
-      - "imu_dev:=${IMU_DEV:-/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0}"
+      - "gnss_dev:=/dev/op-gnss"
+      - "imu_dev:=/dev/op-imu"
       - "use_rviz:=false"
       - "ntrip_params_file:=${NTRIP_PARAMS:-/opt/outdoor-patrol/install/share/ntrip_client/config/ntrip.yaml.example}"
-      - "lidar_dev:=${LIDAR_DEV:-/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_f86253bee863ef11a2a1e2a9c169b110-if00-port0}"
+      - "lidar_dev:=/dev/op-lidar"
 
   # Teach pass. Not started by default: it records from the moment it comes
   # up, so bringing it up by accident quietly accumulates a route nobody

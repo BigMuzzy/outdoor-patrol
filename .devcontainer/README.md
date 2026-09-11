@@ -96,7 +96,10 @@ nodes.
 
 During bring-up there's nothing to do: `--privileged` + `--volume=/dev:/dev`
 expose every host device node live, and `initializeCommand` installs the
-`/dev/esp32-chassis` udev symlink on the Pi. To lock this down later, comment
+`/dev/op-chassis` and legacy `/dev/esp32-chassis` udev symlinks on the Pi.
+Full sensor-role setup is an explicit
+[host deployment step](../deploy/README.md#opt-in-to-stable-host-roles).
+To lock this down later, comment
 out the privileged block and uncomment the matching `--device=` lines in
 [`orangepi/devcontainer.json`](orangepi/devcontainer.json). See
 [Hardware passthrough](#hardware-passthrough-both-variants) for details,
@@ -125,13 +128,28 @@ Both variants currently expose hardware the **permissive** way, for bring-up:
   host.
 - `initializeCommand` runs [`install-udev-rules.sh`](install-udev-rules.sh) on
   the **host** before the container is created. It installs
-  [`99-esp32-chassis.rules`](99-esp32-chassis.rules), creating a stable
-  `/dev/esp32-chassis` symlink for the ESP32-S3 chassis controller (its
-  `by-id` path embeds a colon-laden MAC that `--device` can't parse). The
-  script is idempotent and may prompt for `sudo`.
+  the chassis-only entry from the shared
+  [device rules](../deploy/udev/99-outdoor-patrol.rules), creating
+  `/dev/op-chassis` and the compatible `/dev/esp32-chassis` symlink (the raw
+  `by-id` name embeds a colon-laden MAC that `--device` can't parse).
+  The wrapper delegates to
+  [`install-device-rules.sh`](../scripts/install-device-rules.sh), is
+  idempotent, and may prompt for `sudo` on initial installation or an update.
+  An unchanged chassis rule needs no sudo/reload. It leaves full, locally
+  configured host rules untouched; a customized legacy rule is preserved
+  with a warning instead of blocking devcontainer creation.
+  GNSS/IMU/lidar roles are optional host setup, not an automatic guess.
 - The per-device `--device=` lines stay **commented** in both
   `devcontainer.json` files as a reference for tightening this back down once
   the stack is stable.
+
+Host role aliases appear through the live `/dev` mount without another
+container setting. Compose's `.env` is **not** consumed by devcontainers.
+Bare-metal/devcontainer driver YAML defaults remain at their legacy paths;
+to use role aliases explicitly, pass `serial_dev:=/dev/op-chassis`,
+`gnss_dev:=/dev/op-gnss`, `imu_dev:=/dev/op-imu`, `lidar_dev:=/dev/op-lidar`
+to the combined bringup. This is also necessary if you switch from a full
+`/dev` mount to the commented per-role `--device` bindings.
 
 > ⚠️ `--privileged` is broad. It's fine for bring-up on a trusted machine, but
 > switch back to explicit `--device=` entries (or a device-cgroup rule plus the

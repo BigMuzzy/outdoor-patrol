@@ -12,7 +12,7 @@
 	// Runs on the HOST before the container is created. (1) Ensures the
 	// host's ~/.ssh exists with safe perms so the bind mount below can
 	// persist SSH keys/config across rebuilds. (2) Installs the udev rule
-	// that creates the stable /dev/esp32-chassis symlink so the --device
+	// that creates /dev/op-chassis and the legacy /dev/esp32-chassis symlink so the --device
 	// passthrough below works (udev/dev are host-managed; this cannot be
 	// done in the Dockerfile). Idempotent; may prompt for sudo.
 	"initializeCommand": "mkdir -p \"${localEnv:HOME}/.ssh\" && chmod 700 \"${localEnv:HOME}/.ssh\"; ${localWorkspaceFolder}/.devcontainer/install-udev-rules.sh",
@@ -53,10 +53,13 @@
 		// device-cgroup-rule + /dev mount) once the stack is stable.
 		"--privileged",
 		"--volume=/dev:/dev",
-		// Reference: previously-pinned nodes (re-enable once locked down).
-		// "--device=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0", // UM982 GNSS (CH340)
-		// "--device=/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0", // Inertial Labs KERNEL IMU (FTDI FT230X)
-		// "--device=/dev/esp32-chassis", // ESP32-S3 micro-ROS chassis controller (host udev symlink)
+		// Reference: pin roles after installing full host rules (deploy/README).
+		// Also pass role paths to the launch args; standalone YAML defaults
+		// deliberately retain the legacy host paths.
+		// "--device=/dev/op-gnss",
+		// "--device=/dev/op-imu",
+		// "--device=/dev/op-lidar",
+		// "--device=/dev/op-chassis",
 		// uncomment to use Nvidia GPU with Linux, https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 		// "--runtime=nvidia"
 		// uncomment to use Nvidia GPU with Windows WSL2

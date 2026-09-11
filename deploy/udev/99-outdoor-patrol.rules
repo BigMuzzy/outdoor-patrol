@@ -1,0 +1,12 @@
+# Host role names for the stock USB devices. Verify unit serials on the host.
+# Copy this file for a robot-specific mapping and pass --rules-file to
+# scripts/install-device-rules.sh. Only this host mapping changes on a swap.
+#
+# The GNSS adapter has no unique serial. Replace its path placeholder with
+# the ID_PATH from: udevadm info --query=property --name=<GNSS tty>
+# Do not match all CH340 adapters or select the first ttyUSB device. A path
+# pin identifies the USB socket/interface; recheck it after moving a cable.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", ATTRS{serial}=="1C:DB:D4:7A:29:9C", SYMLINK+="op-chassis esp32-chassis", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="tty", ENV{ID_PATH}=="@GNSS_ID_PATH@", SYMLINK+="op-gnss", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="tty", ATTRS{serial}=="DO01MCPU", SYMLINK+="op-imu", GROUP="dialout", MODE="0660"
+SUBSYSTEM=="tty", ATTRS{serial}=="f86253bee863ef11a2a1e2a9c169b110", SYMLINK+="op-lidar", GROUP="dialout", MODE="0660"

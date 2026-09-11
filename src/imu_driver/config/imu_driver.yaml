@@ -4,11 +4,9 @@
 # Z = up). Resolve mounting with a static transform from base_link to frame_id.
 imu_driver:
   ros__parameters:
-    # Stable by-id path for the FTDI FT230X USB-UART on the IMU. Survives USB
-    # re-enumeration (unlike /dev/ttyUSB0) and is the node Docker creates when
-    # this device is passed through via --device=/dev/serial/by-id/... in
-    # .devcontainer/devcontainer.json. Override with `-p port:=/dev/ttyUSB0`
-    # on bare-metal hosts.
+    # Legacy standalone/devcontainer default for the recorded FT230X adapter.
+    # Deployment passes /dev/op-imu via imu_dev, independent of host identity.
+    # Use port:=... in the standalone launch to choose a replacement adapter.
     port: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01MCPU-if00-port0
     # MUST equal the device's COM baud (set in the Inertial Labs GUI). The
     # driver never changes the device baud. This unit ships auto-streaming

@@ -13,6 +13,7 @@ src/esp32-s3-uros-controller.worktrees
 # NTRIP caster credentials — copy ntrip.yaml.example to ntrip.yaml and fill in.
 # Never commit real credentials.
 **/ntrip.yaml
+/deploy/.env
 **/__pycache__/
 # Recorded GNSS soaks / validation bags. Keep the analysis text, not the
 # multi-megabyte mcap.
