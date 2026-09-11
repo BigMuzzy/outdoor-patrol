@@ -28,6 +28,7 @@ auto-on-first-fix (config/navsat.yaml), so start near the dock.
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     TimerAction,
 )
@@ -62,6 +63,41 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             'use_sim_time', default_value='false',
             description='Use simulation clock if true.'),
+        DeclareLaunchArgument(
+            'gnss_dev', default_value='',
+            description='Override the GNSS serial port; empty keeps its YAML.'),
+        DeclareLaunchArgument(
+            'imu_dev', default_value='',
+            description='Override the IMU serial port; empty keeps its YAML.'),
+        DeclareLaunchArgument(
+            'um982_params_file',
+            default_value=PathJoinSubstitution(
+                [um982, 'config', 'um982_rover.yaml']),
+            description='Legacy alias for gnss_params_file.'),
+        DeclareLaunchArgument(
+            'gnss_params_file',
+            default_value=LaunchConfiguration('um982_params_file'),
+            description='GNSS driver YAML; gnss_dev overrides its port.'),
+        DeclareLaunchArgument(
+            'imu_params_file',
+            default_value=PathJoinSubstitution(
+                [imu_pkg, 'config', 'imu_driver.yaml']),
+            description='IMU driver YAML; imu_dev overrides its port.'),
+        DeclareLaunchArgument(
+            'gnss_auto_activate',
+            default_value=LaunchConfiguration('auto_activate', default='true'),
+            description='Activate GNSS on launch. Legacy auto_activate now '
+                        'controls GNSS only, never the IMU.'),
+        DeclareLaunchArgument(
+            'imu_auto_activate', default_value='true',
+            description='Activate the IMU independently of GNSS.'),
+        DeclareLaunchArgument(
+            'imu_baud',
+            default_value=LaunchConfiguration('baud', default=''),
+            description='Override IMU baud; empty keeps its YAML.'),
+        DeclareLaunchArgument(
+            'rtcm_topic', default_value='/rtcm',
+            description='RTCM correction topic shared by GNSS and NTRIP.'),
         DeclareLaunchArgument(
             'ntrip_params_file',
             default_value=PathJoinSubstitution(
@@ -109,12 +145,24 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # UM982 RTK GNSS + NTRIP (lifecycle auto-activated inside).
-    gnss = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([um982, 'launch', 'gnss_rtk.launch.py'])),
-        launch_arguments={
+    # Driver-private params_file/port/auto_activate must not inherit or leak
+    # through sibling includes. Group launch configurations resolve in parent.
+    gnss = GroupAction(
+        scoped=True,
+        forwarding=False,
+        launch_configurations={
+            'um982_params_file': LaunchConfiguration('gnss_params_file'),
+            'port': LaunchConfiguration('gnss_dev'),
             'ntrip_params_file': ntrip_params_file,
-        }.items(),
+            'rtcm_topic': LaunchConfiguration('rtcm_topic'),
+            'auto_activate': LaunchConfiguration('gnss_auto_activate'),
+            'ros_namespace': LaunchConfiguration('ros_namespace', default=''),
+            'use_sim_time': use_sim_time,
+        },
+        actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                PathJoinSubstitution([um982, 'launch', 'gnss_rtk.launch.py'])),
+        )],
     )
 
     # Dual-EKF + navsat + confidence_gate + heading adapter.
@@ -134,21 +182,24 @@ def generate_launch_description() -> LaunchDescription:
     # TimerAction starts it only AFTER the micro-ROS agent + EKFs are up and
     # /odom flows. use_static_tf:=false -> robot_state_publisher owns
     # base_link -> imu_link (from the URDF).
-    imu = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([imu_pkg, 'launch', 'imu_driver.launch.py'])),
-        launch_arguments={
+    imu = GroupAction(
+        scoped=True,
+        forwarding=False,
+        launch_configurations={
+            'params_file': LaunchConfiguration('imu_params_file'),
+            'port': LaunchConfiguration('imu_dev'),
+            'baud': LaunchConfiguration('imu_baud'),
+            'auto_activate': LaunchConfiguration('imu_auto_activate'),
+            'ros_namespace': LaunchConfiguration('ros_namespace', default=''),
+            'use_sim_time': use_sim_time,
             'use_rviz': 'false',
             'use_static_tf': 'false',
-            # Pass params_file EXPLICITLY. Included launch files share the
-            # parent's launch-configuration scope, and localization.launch.py
-            # also declares a generic `params_file` (for ekf.yaml). Without
-            # this, the imu node inherits THAT path, its own config never
-            # loads, and it falls back to code defaults (/dev/ttyUSB0 @115200)
-            # -> "Failed to open serial /dev/ttyUSB0".
-            'params_file': PathJoinSubstitution(
-                [imu_pkg, 'config', 'imu_driver.yaml']),
-        }.items(),
+        },
+        actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                PathJoinSubstitution(
+                    [imu_pkg, 'launch', 'imu_driver.launch.py'])),
+        )],
     )
     imu_delayed = TimerAction(
         period=LaunchConfiguration('imu_start_delay'),

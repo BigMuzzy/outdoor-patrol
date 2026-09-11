@@ -1,6 +1,8 @@
 # Copyright 2026 Outdoor Patrol Team
 # SPDX-License-Identifier: Apache-2.0
 """Launch the Inertial Labs IMU driver with auto-activation, TF, and RViz."""
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -20,7 +22,13 @@ import lifecycle_msgs.msg
 
 def _launch_setup(context, *args, **kwargs):
     """Build the driver plus optional auto-activation, static TF, and RViz."""
-    params = [LaunchConfiguration('params_file')]
+    params_file = Path(LaunchConfiguration('params_file').perform(context))
+    if not params_file.is_file():
+        raise FileNotFoundError(f'IMU parameter file not found: {params_file}')
+    params: list[str | dict[str, str | int]] = [str(params_file)]
+    port = LaunchConfiguration('port').perform(context)
+    if port:
+        params.append({'port': port})
     baud = LaunchConfiguration('baud').perform(context)
     if baud:
         params.append({'baudrate': int(baud)})
@@ -88,6 +96,11 @@ def generate_launch_description() -> LaunchDescription:
             'params_file',
             default_value=default_params,
             description='Path to the IMU driver parameter YAML.',
+        ),
+        DeclareLaunchArgument(
+            'port',
+            default_value='',
+            description='Override the serial port. Empty keeps the YAML value.',
         ),
         DeclareLaunchArgument(
             'baud',

@@ -1,6 +1,7 @@
 # Copyright 2026 Outdoor Patrol Team
 # SPDX-License-Identifier: Apache-2.0
-"""Combined RTK GNSS bringup: UM982 rover + NTRIP correction source.
+r"""
+Combined RTK GNSS bringup: UM982 rover + NTRIP correction source.
 
 Wires the full VRS correction loop so a single command brings the rover to
 an RTK fix:
@@ -18,15 +19,17 @@ publishing to the same ``rtcm_topic`` — the UM982 side is unchanged.
 
 Usage:
 
-    ros2 launch um982_driver gnss_rtk.launch.py \\
-        ntrip_params_file:=/path/to/ntrip.yaml \\
+    ros2 launch um982_driver gnss_rtk.launch.py \
+        ntrip_params_file:=/path/to/ntrip.yaml \
         um982_params_file:=/path/to/um982_rover.yaml
 """
-import lifecycle_msgs.msg
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     EmitEvent,
+    OpaqueFunction,
     RegisterEventHandler,
 )
 from launch.conditions import IfCondition
@@ -36,6 +39,7 @@ from launch_ros.actions import LifecycleNode, Node
 from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
 from launch_ros.substitutions import FindPackageShare
+import lifecycle_msgs.msg
 
 # The UM982 publishes private topics under its node name; keep the name and
 # the GGA remap target in lock-step.
@@ -72,6 +76,30 @@ def generate_launch_description() -> LaunchDescription:
         default_value='true',
         description='Configure+activate the UM982 lifecycle node on launch.',
     )
+    port_arg = DeclareLaunchArgument(
+        'port',
+        default_value='',
+        description='Override the serial port. Empty keeps the YAML value.',
+    )
+
+    return LaunchDescription([
+        um982_params_arg,
+        ntrip_params_arg,
+        rtcm_topic_arg,
+        auto_activate_arg,
+        port_arg,
+        OpaqueFunction(function=_launch_setup),
+    ])
+
+
+def _launch_setup(context):
+    params_file = Path(LaunchConfiguration('um982_params_file').perform(context))
+    if not params_file.is_file():
+        raise FileNotFoundError(f'UM982 parameter file not found: {params_file}')
+    params: list[str | dict[str, str]] = [str(params_file)]
+    port = LaunchConfiguration('port').perform(context)
+    if port:
+        params.append({'port': port})
 
     rtcm_topic = LaunchConfiguration('rtcm_topic')
 
@@ -93,7 +121,7 @@ def generate_launch_description() -> LaunchDescription:
         name=UM982_NODE_NAME,
         namespace='',
         output='screen',
-        parameters=[LaunchConfiguration('um982_params_file')],
+        parameters=params,
         remappings=[
             ('rtcm/in', rtcm_topic),
         ],
@@ -124,13 +152,9 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(LaunchConfiguration('auto_activate')),
     )
 
-    return LaunchDescription([
-        um982_params_arg,
-        ntrip_params_arg,
-        rtcm_topic_arg,
-        auto_activate_arg,
+    return [
         ntrip_client,
         um982,
         activate_on_inactive,
         configure_um982,
-    ])
+    ]

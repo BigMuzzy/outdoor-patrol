@@ -97,6 +97,30 @@ docker compose -f deploy/docker-compose.yaml down
 The compose file uses `restart: unless-stopped`, so the container comes back
 up after reboots as long as the Docker daemon does.
 
+### Device overrides
+
+Both Compose entry points accept `SERIAL_DEV`, `GNSS_DEV`, `IMU_DEV` and
+`LIDAR_DEV`. Each selects the mapped host device **and** the port opened by
+its consumer. No driver-YAML edit is needed for a port-only change:
+
+```bash
+GNSS_DEV=/dev/gnss-rover IMU_DEV=/dev/imu-primary \
+  docker compose -f deploy/docker-compose.yaml up -d --force-recreate robot
+```
+
+For a launch outside Compose, use `serial_dev`, `gnss_dev`, `imu_dev` and
+`lidar_dev` on
+[`gnss_localization.launch.py`](../src/outdoor_patrol_bringup/launch/gnss_localization.launch.py).
+Empty `gnss_dev`/`imu_dev` retain the driver YAML values. Use
+`gnss_params_file` and `imu_params_file` for baud/protocol parameters;
+the legacy `um982_params_file` alias is still accepted. Port overrides
+take precedence over those files.
+
+Lifecycle controls are now independent: `gnss_auto_activate` and
+`imu_auto_activate` both default to `true`. The legacy `auto_activate` argument
+controls **GNSS only**; it no longer unintentionally disables the IMU too.
+To disable both, set both role-specific controls to `false`.
+
 ### Ad-hoc `docker run`
 
 ```bash

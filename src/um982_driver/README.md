@@ -92,6 +92,12 @@ corrections. Runs in the ROS 2 Jazzy dev container (no host ROS install).
      (dual-antenna baseline locked).
    - `ros2 topic echo /diagnostics` reports OK with low correction age.
 
+Both [`um982.launch.py`](launch/um982.launch.py) and
+[`gnss_rtk.launch.py`](launch/gnss_rtk.launch.py) accept `port:=/dev/gnss-rover`
+to override just the serial path. Empty `port` keeps the parameter-file value.
+The standalone launch still requires manual lifecycle transitions; the RTK
+launch still auto-activates unless `auto_activate:=false`.
+
 ## Tests
 
 C++ unit tests cover the NMEA, Unicore, command-builder and

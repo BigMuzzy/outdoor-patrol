@@ -67,8 +67,8 @@ This is a **lifecycle** node; `ros2 run` does not auto-activate it.
 ros2 launch imu_driver imu_driver.launch.py \
   params_file:=src/imu_driver/config/imu_driver.yaml
 
-# override just the baud without editing the YAML:
-ros2 launch imu_driver imu_driver.launch.py baud:=2000000
+# override the port and/or baud without editing the YAML:
+ros2 launch imu_driver imu_driver.launch.py port:=/dev/imu-primary baud:=2000000
 
 # drive the lifecycle
 ros2 lifecycle set /imu_driver configure
@@ -78,6 +78,10 @@ ros2 lifecycle set /imu_driver activate
 ros2 topic hz /imu_driver/data
 ros2 topic echo /diagnostics --once
 ```
+
+Empty `port` or `baud` keeps that value from the parameter file. A non-empty
+override is applied after the YAML. Missing parameter files fail at launch
+instead of silently starting with driver defaults.
 
 ### Rate / decimation
 

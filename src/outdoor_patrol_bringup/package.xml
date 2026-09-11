@@ -22,6 +22,9 @@
   <exec_depend>teleop_twist_keyboard</exec_depend>
   <!-- M1: localization.launch.py is included by odometry.launch.py. -->
   <exec_depend>outdoor_patrol_loc</exec_depend>
+  <!-- GNSS driver and correction source used by gnss_localization.launch.py. -->
+  <exec_depend>um982_driver</exec_depend>
+  <exec_depend>ntrip_client</exec_depend>
   <!-- M2: gnss_localization.launch.py includes imu_driver.launch.py. -->
   <exec_depend>imu_driver</exec_depend>
   <!-- M3: gnss_localization.launch.py runs the RPLIDAR driver + scan_safety. -->
