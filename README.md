@@ -77,7 +77,7 @@ source install/setup.bash
 source uros_agent_ws/install/local_setup.bash
 
 # Terminal 1: agent + robot_state_publisher
-ros2 launch outdoor_patrol_bringup teleop.launch.py serial_dev:=/dev/ttyACM0
+ros2 launch outdoor_patrol_bringup teleop.launch.py chassis_dev:=/dev/ttyACM0
 
 # Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -101,7 +101,7 @@ is the sole owner of the transform (REP-105 single-writer).
 
 ```bash
 # Terminal 1: agent + robot_state_publisher + EKF (odom -> base_link)
-ros2 launch outdoor_patrol_bringup odometry.launch.py serial_dev:=/dev/ttyACM0
+ros2 launch outdoor_patrol_bringup odometry.launch.py chassis_dev:=/dev/ttyACM0
 
 # Terminal 2: keyboard teleop (needs a real TTY, not auto-launched)
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -132,7 +132,7 @@ the UM982 driver + NTRIP (RTK), the dual-EKF + `navsat_transform` +
 ```bash
 # Terminal 1: full stack. Point ntrip_params_file at your real caster creds.
 ros2 launch outdoor_patrol_bringup gnss_localization.launch.py \
-  serial_dev:=/dev/ttyACM0 \
+  chassis_dev:=/dev/ttyACM0 \
   ntrip_params_file:=$(pwd)/ntrip.yaml
 
 # Terminal 2: keyboard teleop through the lidar brake (needs a real TTY)

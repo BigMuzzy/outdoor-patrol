@@ -1,6 +1,8 @@
 # Device connection paths and replacement boundaries
 
 **Implementation snapshot:** 2026-09-11 UTC, through commit `007e889`.
+**Chassis naming update:** 2026-09-13 UTC: `chassis_dev` / `CHASSIS_DEV` are
+canonical; the old `serial_dev` / `SERIAL_DEV` names remain compatibility aliases.
 This describes checked-in software/configuration, not a live robot inventory.
 No robot deployment, host rule installation, serial connection or physical
 performance test was performed. USB identities below are recorded defaults;
@@ -23,7 +25,7 @@ and RC receiver terminate at the ESP32, not at Linux device nodes.
 
 | Role | Recorded stock connection | Host source selection | Fixed deployment target | Software consumer |
 |---|---|---|---|---|
-| Chassis | ESP32-S3 native USB Serial/JTAG | `SERIAL_DEV`; legacy default `/dev/ttyACM0`, optional `/dev/op-chassis` | `/dev/op-chassis` | `micro_ros_agent`; exposes firmware `/odom` and `/cmd_vel` interfaces |
+| Chassis | ESP32-S3 native USB Serial/JTAG | `CHASSIS_DEV`; legacy default `/dev/ttyACM0`, optional `/dev/op-chassis` | `/dev/op-chassis` | `micro_ros_agent`; exposes firmware `/odom` and `/cmd_vel` interfaces |
 | GNSS | UM982 receiver over the recorded CH340 USB-UART | `GNSS_DEV`; legacy by-id default, optional `/dev/op-gnss` with an explicit topology pin | `/dev/op-gnss` | Selected GNSS profile; stock UM982 driver plus NTRIP |
 | IMU | Recorded FT230X adapter, serial `DO01MCPU` | `IMU_DEV`; legacy by-id default or optional `/dev/op-imu` | `/dev/op-imu` | Selected IMU profile; stock `imu_driver` implements the Inertial Labs binary protocol |
 | Lidar | RPLIDAR C1 over recorded CP2102N adapter, serial `f86253bee863ef11a2a1e2a9c169b110` | `LIDAR_DEV`; legacy by-id default or optional `/dev/op-lidar` | `/dev/op-lidar` | Selected lidar profile; stock `sllidar_node` |

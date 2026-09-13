@@ -120,7 +120,7 @@ paths use environment-backed launch defaults; see the
   [doc/eng/wiki/deployment/pi-container-races-wifi-at-boot.md](../../../doc/eng/wiki/deployment/pi-container-races-wifi-at-boot.md).
   A `docker restart outdoor-patrol` usually fixes a one-off.
 - **Container will not start / restart-looping** — check all host device
-  sources (`SERIAL_DEV`, `GNSS_DEV`, `IMU_DEV`, `LIDAR_DEV`). A missing source
+  sources (`CHASSIS_DEV`, `GNSS_DEV`, `IMU_DEV`, `LIDAR_DEV`). A missing source
   prevents container creation, including missing `/dev/op-*` aliases after
   opting in without installing rules. If the container exists, inspect
   `docker compose logs` for a missing profile/config or network-wait timeout.

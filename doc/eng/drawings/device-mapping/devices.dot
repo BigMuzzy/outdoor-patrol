@@ -26,7 +26,7 @@ digraph devices {
   subgraph cluster_host {
     label="Linux host: *_DEV selects the source";
     color="#a8852c"; style=rounded;
-    hs [label="SERIAL_DEV\nlegacy: /dev/ttyACM0\nopt-in: /dev/op-chassis",
+    hs [label="CHASSIS_DEV\nlegacy: /dev/ttyACM0\nopt-in: /dev/op-chassis",
         fillcolor="#fff6df"];
     hg [label="GNSS_DEV\nlegacy: CH340 by-id\nopt-in: /dev/op-gnss",
         fillcolor="#fff6df"];
@@ -43,7 +43,7 @@ digraph devices {
   subgraph cluster_container {
     label="Robot service (stock or Nav2 Compose): bindings + launch";
     color="#43704a"; style=rounded;
-    cs [label="/dev/op-chassis\nserial_dev argument", fillcolor="#e6f3e8"];
+    cs [label="/dev/op-chassis\nchassis_dev argument", fillcolor="#e6f3e8"];
     cg [label="/dev/op-gnss\nGNSS_PORT -> gnss_dev", fillcolor="#e6f3e8"];
     ci [label="/dev/op-imu\nIMU_PORT -> imu_dev", fillcolor="#e6f3e8"];
     cl [label="/dev/op-lidar\nLIDAR_PORT -> lidar_dev", fillcolor="#e6f3e8"];

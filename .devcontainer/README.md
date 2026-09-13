@@ -146,7 +146,7 @@ Both variants currently expose hardware the **permissive** way, for bring-up:
 Host role aliases appear through the live `/dev` mount without another
 container setting. Compose's `.env` is **not** consumed by devcontainers.
 Bare-metal/devcontainer driver YAML defaults remain at their legacy paths;
-to use role aliases explicitly, pass `serial_dev:=/dev/op-chassis`,
+to use role aliases explicitly, pass `chassis_dev:=/dev/op-chassis`,
 `gnss_dev:=/dev/op-gnss`, `imu_dev:=/dev/op-imu`, `lidar_dev:=/dev/op-lidar`
 to the combined bringup. This is also necessary if you switch from a full
 `/dev` mount to the commented per-role `--device` bindings.

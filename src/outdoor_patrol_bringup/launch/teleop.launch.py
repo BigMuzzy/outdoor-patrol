@@ -22,10 +22,11 @@ def generate_launch_description():
     pkg = FindPackageShare('outdoor_patrol_bringup')
 
     # USB-CDC default per esp32-s3-uros-controller ADR-0002.
-    serial_dev_arg = DeclareLaunchArgument(
-        'serial_dev',
-        default_value='/dev/ttyACM0',
-        description='Serial device exposed by the ESP32-S3 micro-ROS agent.')
+    chassis_dev_arg = DeclareLaunchArgument(
+        'chassis_dev',
+        default_value=LaunchConfiguration('serial_dev', default='/dev/ttyACM0'),
+        description='Chassis-controller device; serial_dev is a deprecated '
+                    'alias.')
 
     # Baud is ignored over USB-CDC but the agent CLI still requires it.
     serial_baud_arg = DeclareLaunchArgument(
@@ -45,13 +46,13 @@ def generate_launch_description():
         output='screen',
         arguments=[
             'serial',
-            '--dev', LaunchConfiguration('serial_dev'),
+            '--dev', LaunchConfiguration('chassis_dev'),
             '-b', LaunchConfiguration('serial_baud'),
         ],
     )
 
     return LaunchDescription([
-        serial_dev_arg,
+        chassis_dev_arg,
         serial_baud_arg,
         description_launch,
         micro_ros_agent,

@@ -12,19 +12,19 @@ import pytest
 
 DEPLOY = Path(__file__).resolve().parents[1]
 DEVICE_ARGS = {
-    'SERIAL_DEV': 'serial_dev',
+    'CHASSIS_DEV': 'chassis_dev',
     'GNSS_DEV': 'gnss_dev',
     'IMU_DEV': 'imu_dev',
     'LIDAR_DEV': 'lidar_dev',
 }
 CONTAINER_PATHS = {
-    'SERIAL_DEV': '/dev/op-chassis',
+    'CHASSIS_DEV': '/dev/op-chassis',
     'GNSS_DEV': '/dev/op-gnss',
     'IMU_DEV': '/dev/op-imu',
     'LIDAR_DEV': '/dev/op-lidar',
 }
 LEGACY_HOST_PATHS = {
-    'SERIAL_DEV': '/dev/ttyACM0',
+    'CHASSIS_DEV': '/dev/ttyACM0',
     'GNSS_DEV': '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0',
     'IMU_DEV': (
         '/dev/serial/by-id/'
@@ -50,7 +50,7 @@ def render_compose(
         key: value for key, value in os.environ.items()
         if key not in (
             set(DEVICE_ARGS) | PROFILE_VARIABLES |
-            {'NTRIP_PARAMS', 'SERIAL_BAUD', 'DATA_DIR'})
+            {'NTRIP_PARAMS', 'SERIAL_DEV', 'SERIAL_BAUD', 'DATA_DIR'})
     }
     environment.update(overrides)
     files = ['-f', str(DEPLOY / filename)]
@@ -84,7 +84,7 @@ def test_device_mapping_matches_driver_port(filename, overrides):
     assert set(by_target) == set(CONTAINER_PATHS.values())
     for variable, argument in DEVICE_ARGS.items():
         target = CONTAINER_PATHS[variable]
-        if variable == 'SERIAL_DEV':
+        if variable == 'CHASSIS_DEV':
             assert arguments[argument] == target
         else:
             assert argument not in arguments
@@ -92,7 +92,9 @@ def test_device_mapping_matches_driver_port(filename, overrides):
                 target)
         assert by_target[target]['source'] == overrides.get(
             variable, LEGACY_HOST_PATHS[variable])
+    assert robot['environment']['CHASSIS_DEV'] == '/dev/op-chassis'
     assert robot['environment']['SERIAL_DEV'] == '/dev/op-chassis'
+    assert 'serial_dev' not in arguments
     assert not any(value.endswith(':=') for value in robot['command'])
 
 
@@ -147,6 +149,32 @@ def test_network_lidar_removes_only_its_usb_binding(filename):
     assert robot['environment']['LIDAR_PORT'] == ''
     assert arguments['lidar_launch_file'] == '/data/network_lidar.launch.py'
     assert arguments.get('use_lidar', 'true') == 'true'
-    assert arguments['serial_dev'] == '/dev/op-chassis'
+    assert arguments['chassis_dev'] == '/dev/op-chassis'
     assert robot['environment']['GNSS_PORT'] == '/dev/op-gnss'
     assert robot['environment']['IMU_PORT'] == '/dev/op-imu'
+
+
+@pytest.mark.parametrize('filename', [
+    'docker-compose.yaml', 'docker-compose.nav2.yaml',
+])
+@pytest.mark.parametrize('overlay', [
+    (), ('docker-compose.network-lidar.yaml',),
+])
+@pytest.mark.parametrize('overrides, source', [
+    ({'SERIAL_DEV': '/dev/chassis-legacy'}, '/dev/chassis-legacy'),
+    ({'SERIAL_DEV': '/dev/chassis-legacy', 'CHASSIS_DEV': '/dev/chassis-new'},
+     '/dev/chassis-new'),
+    ({'SERIAL_DEV': '/dev/chassis-legacy', 'CHASSIS_DEV': ''},
+     '/dev/chassis-legacy'),
+    ({'SERIAL_DEV': '', 'CHASSIS_DEV': ''}, '/dev/ttyACM0'),
+])
+def test_chassis_host_alias_and_precedence(filename, overlay, overrides, source):
+    robot = render_compose(filename, overrides, override_files=overlay)
+    devices = {device['target']: device['source'] for device in robot['devices']}
+    assert devices['/dev/op-chassis'] == source
+    arguments = dict(
+        value.split(':=', 1) for value in robot['command'] if ':=' in value)
+    assert arguments['chassis_dev'] == '/dev/op-chassis'
+    assert 'serial_dev' not in arguments
+    assert robot['environment']['CHASSIS_DEV'] == '/dev/op-chassis'
+    assert robot['environment']['SERIAL_DEV'] == '/dev/op-chassis'

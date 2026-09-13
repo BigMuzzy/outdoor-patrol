@@ -63,7 +63,7 @@ def generate_launch_description() -> LaunchDescription:
     loc = FindPackageShare('outdoor_patrol_loc')
     safety_pkg = FindPackageShare('outdoor_patrol_safety')
 
-    serial_dev = LaunchConfiguration('serial_dev')
+    chassis_dev = LaunchConfiguration('chassis_dev')
     serial_baud = LaunchConfiguration('serial_baud')
     use_sim_time = LaunchConfiguration('use_sim_time')
     ntrip_params_file = LaunchConfiguration('ntrip_params_file')
@@ -71,8 +71,11 @@ def generate_launch_description() -> LaunchDescription:
 
     args = [
         DeclareLaunchArgument(
-            'serial_dev', default_value='/dev/ttyACM0',
-            description='Serial device of the ESP32-S3 micro-ROS agent.'),
+            'chassis_dev',
+            default_value=LaunchConfiguration(
+                'serial_dev', default='/dev/ttyACM0'),
+            description='Chassis-controller device; serial_dev is a '
+                        'deprecated alias.'),
         DeclareLaunchArgument(
             'serial_baud', default_value='115200',
             description='Baud passed to micro_ros_agent (CDC ignores it).'),
@@ -169,7 +172,7 @@ def generate_launch_description() -> LaunchDescription:
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([bringup, 'launch', 'teleop.launch.py'])),
         launch_arguments={
-            'serial_dev': serial_dev,
+            'chassis_dev': chassis_dev,
             'serial_baud': serial_baud,
         }.items(),
     )

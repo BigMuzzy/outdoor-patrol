@@ -27,6 +27,25 @@ def test_default_hardware_graph(launch_graph):
         'serial', '--dev', '/dev/ttyACM0', '-b', '115200')
 
 
+@pytest.mark.parametrize('launch_file', [
+    'teleop.launch.py', 'odometry.launch.py', 'gnss_localization.launch.py',
+])
+@pytest.mark.parametrize('overrides, device', [
+    ({}, '/dev/ttyACM0'),
+    ({'chassis_dev': '/dev/chassis-new'}, '/dev/chassis-new'),
+    ({'serial_dev': '/dev/chassis-legacy'}, '/dev/chassis-legacy'),
+    ({'serial_dev': '/dev/chassis-legacy', 'chassis_dev': '/dev/chassis-new'},
+     '/dev/chassis-new'),
+])
+def test_chassis_device_argument_and_legacy_alias(
+        launch_graph, launch_file, overrides, device):
+    graph = launch_graph(
+        launch_file=launch_file, use_rviz='false', **overrides)
+    assert graph.nodes['micro_ros_agent'].arguments[:5] == (
+        'serial', '--dev', device, '-b', '115200')
+    assert graph.configurations['chassis_dev'] == device
+
+
 def test_driver_parameters_and_imu_config_regression(launch_graph):
     nodes = launch_graph(use_rviz='false').nodes
     assert nodes['um982_driver'].parameters['port'] == (
@@ -157,7 +176,7 @@ def test_standalone_port_override(launch_graph, package, launch_file, name):
 
 def test_all_device_overrides_reach_their_consumers(launch_graph):
     graph = launch_graph(
-        use_rviz='false', serial_dev='/dev/chassis-test',
+        use_rviz='false', chassis_dev='/dev/chassis-test',
         gnss_dev='/dev/gnss-test', imu_dev='/dev/imu-test',
         lidar_dev='/dev/lidar-test', port='/dev/not-a-role')
     assert set(graph.nodes) == DEFAULT_NODES

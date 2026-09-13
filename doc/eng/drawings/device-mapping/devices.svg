@@ -54,7 +54,7 @@
 <g id="node7" class="node">
 <title>hs</title>
 <path fill="#fff6df" stroke="#456386" d="M837.5,-498C837.5,-498 712.5,-498 712.5,-498 706.5,-498 700.5,-492 700.5,-486 700.5,-486 700.5,-456 700.5,-456 700.5,-450 706.5,-444 712.5,-444 712.5,-444 837.5,-444 837.5,-444 843.5,-444 849.5,-450 849.5,-456 849.5,-456 849.5,-486 849.5,-486 849.5,-492 843.5,-498 837.5,-498"/>
-<text text-anchor="middle" x="775" y="-480.2" font-family="DejaVu Sans" font-size="11.00">SERIAL_DEV</text>
+<text text-anchor="middle" x="775" y="-480.2" font-family="DejaVu Sans" font-size="11.00">CHASSIS_DEV</text>
 <text text-anchor="middle" x="775" y="-468.2" font-family="DejaVu Sans" font-size="11.00">legacy: /dev/ttyACM0</text>
 <text text-anchor="middle" x="775" y="-456.2" font-family="DejaVu Sans" font-size="11.00">opt&#45;in: /dev/op&#45;chassis</text>
 </g>
@@ -160,15 +160,15 @@
 <!-- cs -->
 <g id="node12" class="node">
 <title>cs</title>
-<path fill="#e6f3e8" stroke="#456386" d="M1236,-485C1236,-485 1123,-485 1123,-485 1117,-485 1111,-479 1111,-473 1111,-473 1111,-455 1111,-455 1111,-449 1117,-443 1123,-443 1123,-443 1236,-443 1236,-443 1242,-443 1248,-449 1248,-455 1248,-455 1248,-473 1248,-473 1248,-479 1242,-485 1236,-485"/>
+<path fill="#e6f3e8" stroke="#456386" d="M1241.5,-485C1241.5,-485 1117.5,-485 1117.5,-485 1111.5,-485 1105.5,-479 1105.5,-473 1105.5,-473 1105.5,-455 1105.5,-455 1105.5,-449 1111.5,-443 1117.5,-443 1117.5,-443 1241.5,-443 1241.5,-443 1247.5,-443 1253.5,-449 1253.5,-455 1253.5,-455 1253.5,-473 1253.5,-473 1253.5,-479 1247.5,-485 1241.5,-485"/>
 <text text-anchor="middle" x="1179.5" y="-467.2" font-family="DejaVu Sans" font-size="11.00">/dev/op&#45;chassis</text>
-<text text-anchor="middle" x="1179.5" y="-455.2" font-family="DejaVu Sans" font-size="11.00">serial_dev argument</text>
+<text text-anchor="middle" x="1179.5" y="-455.2" font-family="DejaVu Sans" font-size="11.00">chassis_dev argument</text>
 </g>
 <!-- hs&#45;&gt;cs -->
 <g id="edge28" class="edge">
 <title>hs&#45;&gt;cs</title>
-<path fill="none" stroke="#526174" d="M849.82,-469.72C921.9,-468.46 1031.03,-466.56 1103.5,-465.3"/>
-<polygon fill="#526174" stroke="#526174" points="1103.88,-467.75 1110.84,-465.18 1103.79,-462.85 1103.88,-467.75"/>
+<path fill="none" stroke="#526174" d="M849.82,-469.72C920.15,-468.49 1025.73,-466.66 1098.14,-465.4"/>
+<polygon fill="#526174" stroke="#526174" points="1098.53,-467.84 1105.48,-465.27 1098.44,-462.94 1098.53,-467.84"/>
 <text text-anchor="middle" x="1001" y="-469.8" font-family="DejaVu Sans" font-size="9.00">devices source:target</text>
 </g>
 <!-- hg&#45;&gt;hi -->
@@ -252,8 +252,8 @@
 <!-- cs&#45;&gt;agent -->
 <g id="edge32" class="edge">
 <title>cs&#45;&gt;agent</title>
-<path fill="none" stroke="#526174" d="M1248.02,-464C1268.2,-464 1290.94,-464 1313.33,-464"/>
-<polygon fill="#526174" stroke="#526174" points="1313.58,-466.45 1320.58,-464 1313.58,-461.55 1313.58,-466.45"/>
+<path fill="none" stroke="#526174" d="M1253.67,-464C1272.45,-464 1293.12,-464 1313.5,-464"/>
+<polygon fill="#526174" stroke="#526174" points="1313.69,-466.45 1320.69,-464 1313.69,-461.55 1313.69,-466.45"/>
 </g>
 <!-- cg&#45;&gt;ci -->
 <!-- gp -->

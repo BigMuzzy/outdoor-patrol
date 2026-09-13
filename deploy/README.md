@@ -95,13 +95,13 @@ up after reboots as long as the Docker daemon does.
 
 ### Device overrides
 
-Both Compose entry points accept `SERIAL_DEV`, `GNSS_DEV`, `IMU_DEV` and
+Both Compose entry points accept `CHASSIS_DEV`, `GNSS_DEV`, `IMU_DEV` and
 `LIDAR_DEV` as **host-side** paths. They are mapped to fixed container paths;
 the service supplies those paths as the launch arguments' defaults:
 
 | Host variable | Default container path / launch port |
 |---|---|
-| `SERIAL_DEV` | `/dev/op-chassis` (`serial_dev`) |
+| `CHASSIS_DEV` | `/dev/op-chassis` (`chassis_dev`) |
 | `GNSS_DEV` | `/dev/op-gnss` (`gnss_dev`) |
 | `IMU_DEV` | `/dev/op-imu` (`imu_dev`) |
 | `LIDAR_DEV` | `/dev/op-lidar` (`lidar_dev`) |
@@ -113,13 +113,20 @@ GNSS_DEV=/dev/gnss-rover IMU_DEV=/dev/imu-primary \
   docker compose -f deploy/docker-compose.yaml up -d --force-recreate robot
 ```
 
-For a launch outside Compose, use `serial_dev`, `gnss_dev`, `imu_dev` and
+For a launch outside Compose, use `chassis_dev`, `gnss_dev`, `imu_dev` and
 `lidar_dev` on
 [`gnss_localization.launch.py`](../src/outdoor_patrol_bringup/launch/gnss_localization.launch.py).
 Empty `gnss_dev`/`imu_dev` retain the driver YAML values. Use
 `gnss_params_file` and `imu_params_file` for baud/protocol parameters;
 the legacy `um982_params_file` alias is still accepted. Port overrides
 take precedence over those files.
+
+`chassis_dev` is the ESP32 chassis-controller connection, not a sensor port.
+The old `serial_dev` launch argument remains a deprecated fallback when
+`chassis_dev` is omitted. Likewise, host `SERIAL_DEV` is accepted when
+`CHASSIS_DEV` is unset or empty; a non-empty `CHASSIS_DEV` wins. Both names
+are exported inside the container as `/dev/op-chassis` for compatibility.
+The `serial_baud` / `SERIAL_BAUD` settings are unchanged.
 
 Lifecycle controls are now independent: `gnss_auto_activate` and
 `imu_auto_activate` both default to `true`. The legacy `auto_activate` argument
@@ -242,7 +249,7 @@ docker run --rm -it \
   --group-add dialout \
   -v "$PWD/data:/data" \
   outdoor-patrol:arm64 \
-  ros2 launch outdoor_patrol_bringup teleop.launch.py serial_dev:=/dev/op-chassis
+  ros2 launch outdoor_patrol_bringup teleop.launch.py chassis_dev:=/dev/op-chassis
 ```
 
 ---

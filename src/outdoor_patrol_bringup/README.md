@@ -6,6 +6,14 @@ lidar filter/brake. A sensor **profile** is an ordinary ROS Python launch file
 that owns its vendor driver and any protocol/message adapters. Changing a
 profile does not require editing the combined launch or downstream consumers.
 
+The chassis connection is selected with `chassis_dev` in
+[`teleop.launch.py`](launch/teleop.launch.py),
+[`odometry.launch.py`](launch/odometry.launch.py), and the combined launch.
+It feeds the micro-ROS agent's `--dev` option and defaults to `/dev/ttyACM0`.
+The old `serial_dev` argument remains a deprecated fallback if `chassis_dev`
+is omitted. `serial_baud` is unchanged. In deployment, host `CHASSIS_DEV`
+selects the device mapped to `/dev/op-chassis`.
+
 ## Stock profiles
 
 | Role | Profile | Default parameters |
